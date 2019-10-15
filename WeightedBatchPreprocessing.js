@@ -49,10 +49,12 @@
 // POSSIBILITY OF SUCH DAMAGE.
 // ----------------------------------------------------------------------------
 
+/* beautify ignore:start */
+
 #feature-id    Weighted Batch Processing > WeightedBatchPreprocessing
 
 #feature-info  An extension of BatchPreprocessing script including an intermediate step to compute light frames weighs.<br/>\
-               Original script written by Kai Wiechen, extension by Roberto Sartori, Tommaso Rubechi (c) 2019
+               Original script written by Kai Wiechen, extension by Roberto Sartori and Tommaso Rubechi (c) 2019
 
 #iflt __PI_BUILD__ 1321
 #error This script requires PixInsight 1.8.5.1321 or higher.
@@ -67,104 +69,106 @@
 #include "WeightedBatchPreprocessing-engine.js"   // stack engine
 #include "WeightedBatchPreprocessing-GUI.js"      // GUI part
 
+/* beautify ignore:end */
+
 /*
  * Script entry point
  */
 function main()
 {
-   function perform()
-   {
-      if ( !engine.calibrateOnly )
-         if ( engine.integrate )
-            if ( !engine.showIntegrationWarning() )
-               return;
+  function perform()
+  {
+    if ( !engine.calibrateOnly )
+      if ( engine.integrate )
+        if ( !engine.showIntegrationWarning() )
+          return;
 
-      if ( engine.saveProcessLog )
-         console.beginLog();
+    if ( engine.saveProcessLog )
+      console.beginLog();
 
+    try
+    {
+      console.show();
+
+      console.noteln( "<end><cbr><br>",
+        "************************************************************" );
+      console.noteln( "WeightedBatchPreprocessing " + VERSION );
+      console.noteln( "************************************************************" );
+
+      var T = new ElapsedTime;
+
+      if ( !engine.useAsMaster[ ImageType.BIAS ] )
+        engine.doBias();
+      if ( !engine.useAsMaster[ ImageType.DARK ] )
+        engine.doDark();
+      if ( !engine.useAsMaster[ ImageType.FLAT ] )
+        engine.doFlat();
+
+      engine.doLight();
+
+      console.writeln( "<end><cbr><br>* WeightedBatchPreprocessing: ", ElapsedTime.toString( T.value ) );
+
+      console.flush();
+      console.hide();
+    }
+    catch ( x )
+    {
+      ( new MessageBox( x.message, TITLE + " " + VERSION, StdIcon_Error, StdButton_Ok ) ).execute();
+      console.hide();
+    }
+
+    if ( engine.saveProcessLog )
+    {
+      let logData = console.endLog();
+      let logDate = new Date;
+      let logPath = File.existingDirectory( engine.outputDirectory + "/logs" ) +
+        format( "/%04d%02d%02d%02d%02d%02d.log",
+          logDate.getUTCFullYear(), logDate.getUTCMonth() + 1, logDate.getUTCDate(),
+          logDate.getUTCHours(), logDate.getUTCMinutes(), logDate.getUTCSeconds() );
       try
       {
-         console.show();
-
-         console.noteln( "<end><cbr><br>",
-                         "************************************************************" );
-         console.noteln( "WeightedBatchPreprocessing " + VERSION );
-         console.noteln( "************************************************************" );
-
-         var T = new ElapsedTime;
-
-         if ( !engine.useAsMaster[ImageType.BIAS] )
-            engine.doBias();
-         if ( !engine.useAsMaster[ImageType.DARK] )
-            engine.doDark();
-         if ( !engine.useAsMaster[ImageType.FLAT] )
-            engine.doFlat();
-
-         engine.doLight();
-
-         console.writeln( "<end><cbr><br>* WeightedBatchPreprocessing: ", ElapsedTime.toString( T.value ) );
-
-         console.flush();
-         console.hide();
+        var file = File.createFileForWriting( logPath );
+        file.write( logData );
+        file.close();
       }
       catch ( x )
       {
-         (new MessageBox( x.message, TITLE + " " + VERSION, StdIcon_Error, StdButton_Ok )).execute();
-         console.hide();
+        ( new MessageBox( x.message, TITLE + " " + VERSION, StdIcon_Error, StdButton_Ok ) ).execute();
       }
+    }
+  }
 
-      if ( engine.saveProcessLog )
-      {
-         let logData = console.endLog();
-         let logDate = new Date;
-         let logPath = File.existingDirectory( engine.outputDirectory + "/logs" )
-            + format( "/%04d%02d%02d%02d%02d%02d.log",
-                      logDate.getUTCFullYear(), logDate.getUTCMonth()+1, logDate.getUTCDate(),
-                      logDate.getUTCHours(), logDate.getUTCMinutes(), logDate.getUTCSeconds() );
-         try
-         {
-            var file = File.createFileForWriting( logPath );
-            file.write( logData );
-            file.close();
-         }
-         catch ( x )
-         {
-            (new MessageBox( x.message, TITLE + " " + VERSION, StdIcon_Error, StdButton_Ok )).execute();
-         }
-      }
-   }
+  console.hide();
 
-   console.hide();
+  if ( Parameters.isViewTarget )
+    throw new Error( TITLE + " can only be executed in the global context." );
 
-   if ( Parameters.isViewTarget )
-      throw new Error( TITLE + " can only be executed in the global context." );
+  engine.importParameters();
 
-   engine.importParameters();
+  var dialog = new StackDialog();
 
-   var dialog = new StackDialog();
+  for ( ;; )
+  {
+    dialog.updateControls();
 
-   for ( ;; )
-   {
-      dialog.updateControls();
+    if ( !dialog.execute() )
+    {
+      if ( ( new MessageBox( "Do you really want to exit " + TITLE + " ?",
+          TITLE, StdIcon_Question, StdButton_No, StdButton_Yes ) ).execute() == StdButton_Yes )
+        break;
+      continue;
+    }
 
-      if ( !dialog.execute() )
-      {
-         if ( (new MessageBox( "Do you really want to exit " + TITLE + " ?",
-              TITLE, StdIcon_Question, StdButton_No, StdButton_Yes )).execute() == StdButton_Yes )
-            break;
-         continue;
-      }
+    engine.runDiagnostics();
+    if ( !engine.hasDiagnosticMessages() || engine.showDiagnosticMessages( true /*cancelButton*/ ) )
+      perform();
+    engine.clearDiagnosticMessages();
 
-      engine.runDiagnostics();
-      if ( !engine.hasDiagnosticMessages() || engine.showDiagnosticMessages( true/*cancelButton*/ ) )
-         perform();
-      engine.clearDiagnosticMessages();
+    processEvents();
+    gc();
+  }
 
-      processEvents();
-      gc();
-   }
-
-   engine.saveSettings();
+  engine.saveSettings();
 }
 
 main();
