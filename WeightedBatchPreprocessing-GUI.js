@@ -1141,7 +1141,7 @@ function SubframesWeightsEditControl( parent, expand )
   this.PedestalControl.slider.setRange( 1, 100 );
   this.PedestalControl.slider.scaledMinWidth = 1;
   this.PedestalControl.setPrecision( 0 );
-  this.PedestalControl.setValue( engine.SNRWeight );
+  this.PedestalControl.setValue( engine.pedestal );
   this.PedestalControl.toolTip = "<p>Weight contribution of the SNR.</p>";
   this.PedestalControl.onValueUpdated = ( value ) =>
   {

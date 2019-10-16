@@ -904,7 +904,7 @@ StackEngine.prototype.writeImage = function( filePath,
 
 /*
  * Most of the following routines is a semplification of some functions that are implemented
- * in SubframeSelector.js script
+ * in SubframeSelector script
  */
 
 function noiseOfImage( image )
@@ -1004,7 +1004,7 @@ StackEngine.prototype.ImageDescriptor = function( imageWindow, filePath )
   starDetector.structureLayers = 4;
   starDetector.noiseLayers = 2;
   starDetector.hotPixelFilterRadius = 1;
-  starDetector.applyHotPixelFilterToDetectionImage = 1;
+  starDetector.applyHotPixelFilterToDetectionImage = 0;
   starDetector.sensitivity = -1;
   starDetector.peakResponse = 0.8;
   starDetector.maxDistortion = 0.5;
