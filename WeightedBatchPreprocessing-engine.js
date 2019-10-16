@@ -1599,7 +1599,7 @@ StackEngine.prototype.doLight = function()
       console.noteln( "this.useBestLightAsReference: ", this.useBestLightAsReference );
       console.noteln( "this.generateSubframesWeightsAfterRegistration: ", this.generateSubframesWeightsAfterRegistration );
 
-      if ( this.generateSubframesWeights && ( this.useBestLightAsReference || !this.generateSubframesWeightsAfterRegistration ) )
+      if ( this.useBestLightAsReference || ( this.generateSubframesWeights && !this.generateSubframesWeightsAfterRegistration ) )
       {
         let desc = this.computeDescriptors( images );
         imagesDescriptors[ i ] = desc.imagesDescriptors;
@@ -1622,7 +1622,7 @@ StackEngine.prototype.doLight = function()
    */
 
   this.actualReferenceImage = this.referenceImage;
-  if ( this.generateSubframesWeights && this.useBestLightAsReference )
+  if ( this.useBestLightAsReference )
   {
     console.noteln( "<end><cbr><br>",
       "************************************************************" );
@@ -1640,7 +1640,7 @@ StackEngine.prototype.doLight = function()
     console.flush();
   }
 
-  if ( this.generateSubframesWeightsAfterRegistration === false )
+  if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration === false )
   {
     this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
   }
