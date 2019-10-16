@@ -1532,10 +1532,17 @@ StackEngine.prototype.doLight = function()
           var ccFilePath = cosmetizedDirectory + '/' +
             File.extractName( filePath ) +
             "_c_cc" + ".xisf";
-          if ( filePath == this.referenceImage )
-            this.actualReferenceImage = ccFilePath;
-          images.push( ccFilePath );
+          if ( File.exists( ccFilePath ) )
+          {
+            if ( filePath == this.referenceImage )
+              this.actualReferenceImage = ccFilePath;
+            images.push( ccFilePath );
+          }
+          else
+            console.warningln( "** Warning: File does not exist after cosmetic correction: " + ccFilePath );
         }
+        if ( images.length < 1 )
+          throw new Error( "All cosmetic corrected light frame files have been removed or cannot be accessed." );
 
         console.noteln( "<end><cbr><br>",
           "************************************************************" );
