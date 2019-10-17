@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-engine.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.0
+// This file is part of Weighted Batch Preprocessing Script version 1.0.3
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -2029,7 +2029,7 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
             for ( let j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
               retVal[ j ] = [ this.frameGroups[ i ].fileItems[ j ].filePath ];
 
-      console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- neither masterBias provided nor master dark matching the exposure has been found" );
+      console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- neither master bias provided nor master dark matching the exposure has been found" );
       console.noteln( "<end><cbr><br>",
         "************************************************************" );
       console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
