@@ -1237,7 +1237,7 @@ StackEngine.prototype.findRegistrationReferenceImage = function( descriptors )
 
   for ( let i = 0; i < flatDescriptors.length; ++i )
   {
-    let weight = this.computeWeightForLight( flatDescriptors[ i ], flatDescriptorsMinMax, 50, 50, 0 );
+    let weight = this.computeWeightForLight( flatDescriptors[ i ], flatDescriptorsMinMax, 50, 50, 0, 0 );
     if ( weight > maxVal )
     {
       maxVal = weight;
@@ -1248,7 +1248,7 @@ StackEngine.prototype.findRegistrationReferenceImage = function( descriptors )
   return filePath;
 }
 
-StackEngine.prototype.computeWeightForLight = function( descriptor, descriptorMinMax, FWHMWeight, eccentricityWeight, SNRWeight )
+StackEngine.prototype.computeWeightForLight = function( descriptor, descriptorMinMax, FWHMWeight, eccentricityWeight, SNRWeight, pedestal )
 {
   let FWHM = descriptor.FWHM;
   let FWHM_min = descriptorMinMax.FWHM_min;
@@ -1268,7 +1268,7 @@ StackEngine.prototype.computeWeightForLight = function( descriptor, descriptorMi
   let c = ( SNR - SNR_min ) / ( SNR_max - SNR_min );
   // let c = 1 - (noise - noise_min) / (noise_max - noise_min);
   // let weight = this.pedestal + (FWHMWeight * a + eccentricityWeight * b + SNRWeight * c) / 100 * (100 - this.pedestal);
-  let weight = this.pedestal + a * FWHMWeight + b * eccentricityWeight + c * SNRWeight;
+  let weight = pedestal + a * FWHMWeight + b * eccentricityWeight + c * SNRWeight;
   console.noteln( 'Weights of image: ', descriptor.filePath );
   console.noteln( "-----------------------" );
   console.noteln( 'FWHM         : ', format( "%.02f", a * 100 ), " %" );
@@ -1303,7 +1303,7 @@ StackEngine.prototype.writeWeightsWithDescriptors = function( imagesDescriptors,
           console.warningln( "Unable to open file to write weight, " + descriptors[ j ].filePath );
           continue;
         }
-        let weight = this.computeWeightForLight( descriptor, descriptorMinMax, this.FWHMWeight, this.eccentricityWeight, this.SNRWeight );
+        let weight = this.computeWeightForLight( descriptor, descriptorMinMax, this.FWHMWeight, this.eccentricityWeight, this.SNRWeight, this.pedestal );
         imageWindow.keywords = imageWindow.keywords.filter( keyword =>
         {
           return keyword.name !== "SWWEIGHT";
