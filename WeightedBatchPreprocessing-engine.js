@@ -1351,7 +1351,6 @@ StackEngine.prototype.computeDescriptors = function( images )
     if ( imageWindow.mainView.image.colorSpace != ColorSpace_Gray )
     {
       var convertToGrayscale = new ConvertToGrayscale;
-      //console.abortEnabled = false;
       convertToGrayscale.executeOn( imageWindow.mainView, false );
       console.abortEnabled = true;
     }
@@ -1623,7 +1622,7 @@ StackEngine.prototype.doLight = function()
 
     actualReferenceImage = this.findRegistrationReferenceImage( imagesDescriptors );
 
-    console.noteln("<end><cbr><br>");
+    console.noteln( "<end><cbr><br>" );
     console.noteln( "Best reference frame for registration: " + actualReferenceImage );
     console.noteln( "<end><cbr><br>",
       "************************************************************" );
@@ -2004,6 +2003,11 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
   var a_exp = new Array; // all EXPTIME values
   var referenceImageIndex = -1; // index of registration reference frame
 
+  console.noteln( "<end><cbr><br>",
+    "************************************************************" );
+  console.noteln( "* Begin calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
+  console.noteln( "************************************************************" );
+
   for ( var i = 0; i < frameGroup.fileItems.length; ++i )
   {
     var filePath = frameGroup.fileItems[ i ].filePath;
@@ -2036,14 +2040,13 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
             for ( let j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
               retVal[ j ] = [ this.frameGroups[ i ].fileItems[ j ].filePath ];
 
-      console.noteln( "<end><cbr><br>* Calibration of flat frames skipped -- no flat darks found." );
+      console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- no matching master dark found" );
+      console.noteln( "<end><cbr><br>",
+        "************************************************************" );
+      console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
+      console.noteln( "************************************************************" );
       return retVal;
     }
-
-  console.noteln( "<end><cbr><br>",
-    "************************************************************" );
-  console.noteln( "* Begin calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
-  console.noteln( "************************************************************" );
 
   var IC = new ImageCalibration;
 
@@ -2107,7 +2110,7 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
         }
 
   IC.masterDarkPath = masterDarkPath;
-  IC.masterDarkEnabled = !IC.masterDarkPath.isEmpty();
+  IC.masterDarkEnabled = !masterDarkPath.isEmpty();
 
   if ( imageType == ImageType.FLAT )
     IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/flat" );
