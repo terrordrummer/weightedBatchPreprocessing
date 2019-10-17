@@ -124,6 +124,16 @@ if ( !Array.prototype.enableTargetFrames )
 // ----------------------------------------------------------------------------
 
 /*
+ * Returns a clean filter name.
+ *
+ */
+if ( !String.prototype.cleanFilterName )
+  String.prototype.cleanFilterName = function()
+  {
+    return this.replace( /[^a-zA-Z0-9\+\-_]/g, '_' ).replace( /_+/g, '_' );
+  };
+
+/*
  * Returns a copy of this string with all whitespace characters removed at both
  * ends of the string.
  *

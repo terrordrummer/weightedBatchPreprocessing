@@ -101,11 +101,6 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
     return this.filter == filter;
   };
 
-  this.cleanFilterName = function()
-  {
-    return this.filter.replace( /[^a-zA-Z0-9\+\-_]/g, '_' ).replace( /_+/g, '_' );
-  };
-
   // Returns an array [good:Boolean,reason:String]
   this.rejectionIsGood = function( rejection )
   {
@@ -1342,7 +1337,7 @@ StackEngine.prototype.computeDescriptors = function( images )
   for ( let j = 0; j < images.length; ++j )
   {
     let filePath = images[ j ];
-    console.noteln( "Computing descriptors of image ", j + 1, " of ", images.length );
+    console.noteln( "Computing descriptors for image ", j + 1, " of ", images.length );
     console.noteln( 'Load image ', images[ j ] );
     console.flush();
 
@@ -1462,18 +1457,21 @@ StackEngine.prototype.doLight = function()
    *
    *          1. apply calibration/cosmeticCorrection/debayer/SubframeWeighting to all groups
    *     
-   *          2. the light with the highest weight across all groups will be set as reference frame.
+   *          2. if the automatic registration reference image selection is enabled then the light
+   *             with the highest FWHM+eccentricity across all groups will be set as reference frame
+   *             otherwise replace it with its calibrated / cosmetized / debayered 
+   *            counterpart. See also doCalibrate().
    * 
    *          3. registration/integration will continue for all groups
-   *     
    */
   // for ( var g = 0; g < groupIndex.length; ++g )
   // {
   //    var i = groupIndex[g];
   //    var registerFrames = new Array;
-  var intermediateImages = new Array;
+  var processedImageGroups = new Array;
   var imagesDescriptors = new Array;
   var imagesDescriptorsMinMax = new Array;
+  var actualReferenceImage = this.actualReferenceImage;
   for ( var i = 0; i < this.frameGroups.length; ++i )
   {
     if ( this.frameGroups[ i ].imageType == ImageType.LIGHT )
@@ -1535,7 +1533,7 @@ StackEngine.prototype.doLight = function()
           if ( File.exists( ccFilePath ) )
           {
             if ( filePath == this.referenceImage )
-              this.actualReferenceImage = ccFilePath;
+              actualReferenceImage = ccFilePath;
             images.push( ccFilePath );
           }
           else
@@ -1581,8 +1579,8 @@ StackEngine.prototype.doLight = function()
             if ( File.exists( filePath ) )
             {
               debayerImages.push( filePath );
-              if ( images[ c ] == this.actualReferenceImage )
-                this.actualReferenceImage = filePath;
+              if ( images[ c ] == actualReferenceImage )
+                actualReferenceImage = filePath;
             }
           else
             console.warningln( "** Warning: File does not exist after image demosaicing: " + filePath );
@@ -1598,13 +1596,13 @@ StackEngine.prototype.doLight = function()
         console.noteln( "************************************************************" );
       }
 
-      intermediateImages[ i ] = new Array;
+      var processedImageGroup = {};
+      processedImageGroup.filter = this.frameGroups[ i ].filter;
+      processedImageGroup.binning = this.frameGroups[ i ].binning;
+      processedImageGroup.images = new Array;
       for ( let ii = 0; ii < images.length; ++ii )
-        intermediateImages[ i ].push( images[ ii ] );
-
-      console.noteln( "this.generateSubframesWeights: ", this.generateSubframesWeights );
-      console.noteln( "this.useBestLightAsReference: ", this.useBestLightAsReference );
-      console.noteln( "this.generateSubframesWeightsAfterRegistration: ", this.generateSubframesWeightsAfterRegistration );
+        processedImageGroup.images.push( images[ ii ] );
+      processedImageGroups.push( processedImageGroup );
 
       if ( this.useBestLightAsReference || ( this.generateSubframesWeights && !this.generateSubframesWeightsAfterRegistration ) )
       {
@@ -1615,20 +1613,6 @@ StackEngine.prototype.doLight = function()
     }
   }
 
-  /*
-   * ### N.B. If the registration reference image belongs to one of the light
-   *          frame lists (e.g., because it was selected by double-clicking
-   *          on a tree box element):
-   *
-   *          1. Replace it with its calibrated/cosmetized/debayered
-   *             counterpart. See also doCalibrate().
-   *
-   *          2. Make sure that we calibrate/cosmetize/debayer the group that
-   *             contains the reference image in first place.
-   *
-   */
-
-  this.actualReferenceImage = this.referenceImage;
   if ( this.useBestLightAsReference )
   {
     console.noteln( "<end><cbr><br>",
@@ -1637,9 +1621,10 @@ StackEngine.prototype.doLight = function()
     console.noteln( "************************************************************" );
     console.flush();
 
-    this.actualReferenceImage = this.findRegistrationReferenceImage( imagesDescriptors );
+    actualReferenceImage = this.findRegistrationReferenceImage( imagesDescriptors );
 
-    console.noteln( "Best reference frame for registration: " + this.actualReferenceImage );
+    console.noteln("<end><cbr><br>");
+    console.noteln( "Best reference frame for registration: " + actualReferenceImage );
     console.noteln( "<end><cbr><br>",
       "************************************************************" );
     console.noteln( "* End selection of the best reference frame for registration" );
@@ -1652,37 +1637,39 @@ StackEngine.prototype.doLight = function()
     this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
   }
 
-  var groupIndex = new Array;
-  if ( this.actualReferenceImage === null )
-  {
-    for ( var i = 0; i < this.frameGroups.length; ++i )
-      if ( this.frameGroups[ i ].imageType === ImageType.LIGHT )
-      {
-        groupIndex.push( i );
-      }
-  }
-  else
-  {
-    var indexOfGroupWithReferenceImage = -1;
-    for ( var i = 0; i < this.frameGroups.length && indexOfGroupWithReferenceImage < 0; ++i )
-      for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
-        if ( this.frameGroups[ i ].fileItems[ j ].filePath == this.referenceImage )
-        {
-          indexOfGroupWithReferenceImage = i;
-          groupIndex.push( i );
-          break;
-        }
-    for ( var i = 0; i < this.frameGroups.length; ++i )
-      if ( i != indexOfGroupWithReferenceImage && this.frameGroups[ i ].imageType === ImageType.LIGHT )
-        groupIndex.push( i );
-  }
+  // var groupIndex = new Array;
+  // if ( actualReferenceImage === null )
+  // {
+  //   for ( var i = 0; i < this.frameGroups.length; ++i )
+  //     if ( this.frameGroups[ i ].imageType === ImageType.LIGHT )
+  //     {
+  //       groupIndex.push( i );
+  //     }
+  // }
+  // else
+  // {
+  //   var indexOfGroupWithReferenceImage = -1;
+  //   for ( var i = 0; i < this.frameGroups.length && indexOfGroupWithReferenceImage < 0; ++i )
+  //     for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
+  //       if ( this.frameGroups[ i ].fileItems[ j ].filePath == this.referenceImage )
+  //       {
+  //         indexOfGroupWithReferenceImage = i;
+  //         groupIndex.push( i );
+  //         break;
+  //       }
+  //   for ( var i = 0; i < this.frameGroups.length; ++i )
+  //     if ( i != indexOfGroupWithReferenceImage && this.frameGroups[ i ].imageType === ImageType.LIGHT )
+  //       groupIndex.push( i );
+  // }
 
   if ( !this.calibrateOnly )
   {
-    for ( var g = 0; g < groupIndex.length; ++g )
+    for ( var p = 0; p < processedImageGroups.length; ++p )
     {
-      var i = groupIndex[ g ];
-      images = intermediateImages[ i ];
+      // var i = groupIndex[ g ];
+      filter = processedImageGroups[ p ].filter;
+      binning = processedImageGroups[ p ].binning;
+      images = processedImageGroups[ p ].images;
       console.noteln( "<end><cbr><br>",
         "************************************************************" );
       console.noteln( "* Begin registration of light frames" );
@@ -1692,13 +1679,13 @@ StackEngine.prototype.doLight = function()
       var SA = new StarAlignment;
 
       var registerDirectory = this.outputDirectory + "/registered";
-      if ( !this.frameGroups[ i ].filter.isEmpty() )
-        registerDirectory += '/' + this.frameGroups[ i ].cleanFilterName();
+      if ( !filter.isEmpty() )
+        registerDirectory += '/' + filter.cleanFilterName();
       registerDirectory = File.existingDirectory( registerDirectory );
 
       SA.inputHints = this.inputHints();
       SA.outputHints = this.outputHints();
-      SA.referenceImage = this.actualReferenceImage;
+      SA.referenceImage = actualReferenceImage;
       SA.referenceIsFile = true;
       SA.targets = images.enableTargetFrames( 3 );
       SA.outputDirectory = registerDirectory;
@@ -1756,7 +1743,7 @@ StackEngine.prototype.doLight = function()
 
       if ( this.integrate )
       {
-        var tmpGroup = new FrameGroup( ImageType.LIGHT, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, 0, null, false );
+        var tmpGroup = new FrameGroup( ImageType.LIGHT, filter, binning, 0, null, false );
         for ( var c = 0; c < images.length; ++c )
         {
           var filePath = images[ c ]; // outputData.outputImage

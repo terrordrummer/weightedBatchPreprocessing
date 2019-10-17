@@ -2152,13 +2152,14 @@ function StackDialog()
   this.helpLabel = new Label( this );
   this.helpLabel.margin = 4;
   this.helpLabel.wordWrapping = true;
-  this.helpLabel.useRichText = true;
-  this.helpLabel.text =
-    "<p>A script for calibration and alignment of light frames<br/>" +
+  this.helpLabel.useRichTextfff = true;
+  this.helpLabel.text = "<p>A script for calibration and alignment of light frames<br/>" +
     "Copyright (c) 2012 Kai Wiechen.<br/>" +
     "Copyright (c) 2018 Roberto Sartori.<br/>" +
     "Copyright (c) 2018 Tommaso Rubechi.<br/>" +
-    "Copyright (c) 2012-2019 Pleiades Astrophoto.</p>";
+    "Copyright (c) 2012-2019 Pleiades Astrophoto.<br/>" +
+    "<br/>" +
+    "version: v1.0.2</p >";;
 
   //
 
