@@ -1463,14 +1463,11 @@ StackEngine.prototype.doLight = function()
    * 
    *          3. registration/integration will continue for all groups
    */
-  // for ( var g = 0; g < groupIndex.length; ++g )
-  // {
-  //    var i = groupIndex[g];
-  //    var registerFrames = new Array;
+
   var processedImageGroups = new Array;
   var imagesDescriptors = new Array;
   var imagesDescriptorsMinMax = new Array;
-  var actualReferenceImage = this.actualReferenceImage;
+  var actualReferenceImage = this.referenceImage;
   for ( var i = 0; i < this.frameGroups.length; ++i )
   {
     if ( this.frameGroups[ i ].imageType == ImageType.LIGHT )
@@ -1531,7 +1528,7 @@ StackEngine.prototype.doLight = function()
             "_c_cc" + ".xisf";
           if ( File.exists( ccFilePath ) )
           {
-            if ( filePath == this.referenceImage )
+            if ( filePath == actualReferenceImage )
               actualReferenceImage = ccFilePath;
             images.push( ccFilePath );
           }
@@ -1640,10 +1637,11 @@ StackEngine.prototype.doLight = function()
   {
     for ( var p = 0; p < processedImageGroups.length; ++p )
     {
-      // var i = groupIndex[ g ];
       filter = processedImageGroups[ p ].filter;
       binning = processedImageGroups[ p ].binning;
       images = processedImageGroups[ p ].images;
+      let preRegistrationImagesCount = images.length;
+
       console.noteln( "<end><cbr><br>",
         "************************************************************" );
       console.noteln( "* Begin registration of light frames" );
@@ -1699,45 +1697,56 @@ StackEngine.prototype.doLight = function()
       if ( images.length < 1 )
         throw new Error( "All registered light frame files have been removed or cannot be accessed." );
 
-      console.noteln( "<end><cbr><br>",
-        "************************************************************" );
-      console.noteln( "* End registration of light frames" );
-      console.noteln( "************************************************************" );
-      console.flush();
 
-      if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration )
+      if ( images.length < 3 )
       {
-        imagesDescriptors = new Array;
-        imagesDescriptorsMinMax = new Array;
-        let desc = this.computeDescriptors( images );
-        imagesDescriptors[ 0 ] = desc.imagesDescriptors;
-        imagesDescriptorsMinMax[ 0 ] = desc.imagesDescriptorsMinMax;
-        this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
+        let failed = preRegistrationImagesCount - images.length;
+        throw new Error( "Star alignment failed to register " + failed + " images out of " + preRegistrationImagesCount + " provided. A minimum of 3 images must be succesfully registered." );
       }
-
-      if ( this.integrate )
+      else if ( preRegistrationImagesCount - images.length > 0 )
       {
-        var tmpGroup = new FrameGroup( ImageType.LIGHT, filter, binning, 0, null, false );
-        for ( var c = 0; c < images.length; ++c )
-        {
-          var filePath = images[ c ]; // outputData.outputImage
-          if ( !filePath.isEmpty() )
-            if ( File.exists( filePath ) )
-              tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
-            else
-              console.warningln( "** Warning: File does not exist after image registration: " + filePath );
-        }
-        if ( tmpGroup.fileItems.length < 1 )
-          throw new Error( "All registered light frame files have been removed or cannot be accessed." );
-        var masterLightPath = this.doIntegrate( tmpGroup );
-        if ( masterLightPath.isEmpty() )
-          throw new Error( "Error integrating light frames." );
+        console.warningln( "<end><cbr><br>** Warning: failed to register " + preRegistrationImagesCount - images.length + " images out of " + preRegistrationImagesCount );
       }
     }
 
-    processEvents();
-    gc();
+    console.noteln( "<end><cbr><br>",
+      "************************************************************" );
+    console.noteln( "* End registration of light frames" );
+    console.noteln( "************************************************************" );
+    console.flush();
+
+    if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration )
+    {
+      imagesDescriptors = new Array;
+      imagesDescriptorsMinMax = new Array;
+      let desc = this.computeDescriptors( images );
+      imagesDescriptors[ 0 ] = desc.imagesDescriptors;
+      imagesDescriptorsMinMax[ 0 ] = desc.imagesDescriptorsMinMax;
+      this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
+    }
+
+    if ( this.integrate )
+    {
+      var tmpGroup = new FrameGroup( ImageType.LIGHT, filter, binning, 0, null, false );
+      for ( var c = 0; c < images.length; ++c )
+      {
+        var filePath = images[ c ]; // outputData.outputImage
+        if ( !filePath.isEmpty() )
+          if ( File.exists( filePath ) )
+            tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
+          else
+            console.warningln( "** Warning: File does not exist after image registration: " + filePath );
+      }
+      if ( tmpGroup.fileItems.length < 1 )
+        throw new Error( "All registered light frame files have been removed or cannot be accessed." );
+      var masterLightPath = this.doIntegrate( tmpGroup );
+      if ( masterLightPath.isEmpty() )
+        throw new Error( "Error integrating light frames." );
+    }
   }
+
+  processEvents();
+  gc();
 };
 
 StackEngine.prototype.doIntegrate = function( frameGroup )
