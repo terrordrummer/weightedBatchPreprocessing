@@ -1636,31 +1636,6 @@ StackEngine.prototype.doLight = function()
     this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
   }
 
-  // var groupIndex = new Array;
-  // if ( actualReferenceImage === null )
-  // {
-  //   for ( var i = 0; i < this.frameGroups.length; ++i )
-  //     if ( this.frameGroups[ i ].imageType === ImageType.LIGHT )
-  //     {
-  //       groupIndex.push( i );
-  //     }
-  // }
-  // else
-  // {
-  //   var indexOfGroupWithReferenceImage = -1;
-  //   for ( var i = 0; i < this.frameGroups.length && indexOfGroupWithReferenceImage < 0; ++i )
-  //     for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
-  //       if ( this.frameGroups[ i ].fileItems[ j ].filePath == this.referenceImage )
-  //       {
-  //         indexOfGroupWithReferenceImage = i;
-  //         groupIndex.push( i );
-  //         break;
-  //       }
-  //   for ( var i = 0; i < this.frameGroups.length; ++i )
-  //     if ( i != indexOfGroupWithReferenceImage && this.frameGroups[ i ].imageType === ImageType.LIGHT )
-  //       groupIndex.push( i );
-  // }
-
   if ( !this.calibrateOnly )
   {
     for ( var p = 0; p < processedImageGroups.length; ++p )
@@ -2025,11 +2000,25 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
   var binning = frameGroup.binning;
   var filter = frameGroup.filter;
 
+  var masterBiasEnabled = false;
+  var masterBiasPath = "";
+
+  // get the master bias
+  for ( let i = 0; i < this.frameGroups.length; ++i )
+    if ( this.frameGroups[ i ].masterFrame )
+      if ( this.frameGroups[ i ].imageType == ImageType.BIAS )
+        if ( this.frameGroups[ i ].binning == binning )
+        {
+          masterBiasEnabled = true;
+          masterBiasPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
+        }
+
   let exactDarkExposureTime = imageType == ImageType.FLAT && this.flatDarksOnly;
   let masterDarkPath = this.getMasterDarkFrame( binning, exptime, exactDarkExposureTime );
 
+  // skip flat calibration if no masterBias and no masterDark have been found
   if ( exactDarkExposureTime )
-    if ( masterDarkPath.isEmpty() )
+    if ( masterDarkPath.isEmpty() && !masterBiasEnabled )
     {
       // Return the frame group file set since calibration has been skipped but
       // the process should continue with the uncalibrated frames.
@@ -2040,13 +2029,17 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
             for ( let j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
               retVal[ j ] = [ this.frameGroups[ i ].fileItems[ j ].filePath ];
 
-      console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- no matching master dark found" );
+      console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- neither masterBias provided nor master dark matching the exposure has been found" );
       console.noteln( "<end><cbr><br>",
         "************************************************************" );
       console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
       console.noteln( "************************************************************" );
       return retVal;
     }
+  else if ( masterBiasEnabled )
+  {
+    console.noteln( "<end><cbr><br>* " + StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
+  }
 
   var IC = new ImageCalibration;
 
@@ -2100,17 +2093,11 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
       }
   }
 
-  for ( let i = 0; i < this.frameGroups.length; ++i )
-    if ( this.frameGroups[ i ].masterFrame )
-      if ( this.frameGroups[ i ].imageType == ImageType.BIAS )
-        if ( this.frameGroups[ i ].binning == binning )
-        {
-          IC.masterBiasEnabled = true;
-          IC.masterBiasPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
-        }
+  IC.masterBiasEnabled = masterBiasEnabled;
+  IC.masterBiasPath = masterBiasPath
 
-  IC.masterDarkPath = masterDarkPath;
   IC.masterDarkEnabled = !masterDarkPath.isEmpty();
+  IC.masterDarkPath = masterDarkPath;
 
   if ( imageType == ImageType.FLAT )
     IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/flat" );
