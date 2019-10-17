@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-GUI.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.0
+// This file is part of Weighted Batch Preprocessing Script version 1.0.3
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -2160,7 +2160,7 @@ function StackDialog()
     "Copyright (c) 2019 Tommaso Rubechi.<br/>" +
     "Copyright (c) 2012-2019 Pleiades Astrophoto.<br/>" +
     "<br/>" +
-    "version: v1.0.2</p>";
+    "version: v1.0.3</p>";
 
   //
 
