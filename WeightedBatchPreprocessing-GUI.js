@@ -2158,9 +2158,7 @@ function StackDialog()
     "Copyright (c) 2012 Kai Wiechen.<br/>" +
     "Copyright (c) 2019 Roberto Sartori.<br/>" +
     "Copyright (c) 2019 Tommaso Rubechi.<br/>" +
-    "Copyright (c) 2012-2019 Pleiades Astrophoto.<br/>" +
-    "<br/>" +
-    "version: v1.1.0</p>";
+    "Copyright (c) 2012-2019 Pleiades Astrophoto.<br/>";
 
   //
 
