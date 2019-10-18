@@ -2809,7 +2809,7 @@ StackDialog.prototype.refreshTreeBoxes = function()
 
     if ( frameGroup.imageType != ImageType.BIAS )
     {
-      if ( frameGroup.imageType == ImageType.DARK )
+      if ( frameGroup.imageType == ImageType.DARK || frameGroup.imageType == ImageType.LIGHT )
       {
         if ( frameGroup.exposureTime > 0 )
         {

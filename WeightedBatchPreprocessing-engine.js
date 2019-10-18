@@ -96,7 +96,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
       return false;
     if ( this.imageType == ImageType.BIAS )
       return true;
-    if ( this.imageType == ImageType.DARK )
+    if ( this.imageType == ImageType.DARK || this.imageType == ImageType.LIGHT )
       return Math.abs( this.exposureTime - exposureTime ) <= exposureTolerance;
     return this.filter == filter;
   };
@@ -658,7 +658,9 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
         case "EXPTIME":
         case "EXPOSURE":
           if ( !forcedExposureTime )
+          {
             exposureTime = parseFloat( value );
+          }
           break;
       }
     }
@@ -1595,6 +1597,7 @@ StackEngine.prototype.doLight = function()
       var processedImageGroup = {};
       processedImageGroup.filter = this.frameGroups[ i ].filter;
       processedImageGroup.binning = this.frameGroups[ i ].binning;
+      processedImageGroup.exposureTime = this.frameGroups[ i ].exposureTime;
       processedImageGroup.images = new Array;
       for ( let ii = 0; ii < images.length; ++ii )
         processedImageGroup.images.push( images[ ii ] );
@@ -1637,8 +1640,9 @@ StackEngine.prototype.doLight = function()
   {
     for ( var p = 0; p < processedImageGroups.length; ++p )
     {
-      filter = processedImageGroups[ p ].filter;
-      binning = processedImageGroups[ p ].binning;
+      let filter = processedImageGroups[ p ].filter;
+      let binning = processedImageGroups[ p ].binning;
+      let exposureTime = processedImageGroups[ p ].exposureTime;
       images = processedImageGroups[ p ].images;
       let preRegistrationImagesCount = images.length;
 
@@ -1707,41 +1711,41 @@ StackEngine.prototype.doLight = function()
       {
         console.warningln( "<end><cbr><br>** Warning: failed to register " + preRegistrationImagesCount - images.length + " images out of " + preRegistrationImagesCount );
       }
-    }
 
-    console.noteln( "<end><cbr><br>",
-      "************************************************************" );
-    console.noteln( "* End registration of light frames" );
-    console.noteln( "************************************************************" );
-    console.flush();
+      console.noteln( "<end><cbr><br>",
+        "************************************************************" );
+      console.noteln( "* End registration of light frames" );
+      console.noteln( "************************************************************" );
+      console.flush();
 
-    if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration )
-    {
-      imagesDescriptors = new Array;
-      imagesDescriptorsMinMax = new Array;
-      let desc = this.computeDescriptors( images );
-      imagesDescriptors[ 0 ] = desc.imagesDescriptors;
-      imagesDescriptorsMinMax[ 0 ] = desc.imagesDescriptorsMinMax;
-      this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
-    }
-
-    if ( this.integrate )
-    {
-      var tmpGroup = new FrameGroup( ImageType.LIGHT, filter, binning, 0, null, false );
-      for ( var c = 0; c < images.length; ++c )
+      if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration )
       {
-        var filePath = images[ c ]; // outputData.outputImage
-        if ( !filePath.isEmpty() )
-          if ( File.exists( filePath ) )
-            tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
-          else
-            console.warningln( "** Warning: File does not exist after image registration: " + filePath );
+        imagesDescriptors = new Array;
+        imagesDescriptorsMinMax = new Array;
+        let desc = this.computeDescriptors( images );
+        imagesDescriptors[ 0 ] = desc.imagesDescriptors;
+        imagesDescriptorsMinMax[ 0 ] = desc.imagesDescriptorsMinMax;
+        this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
       }
-      if ( tmpGroup.fileItems.length < 1 )
-        throw new Error( "All registered light frame files have been removed or cannot be accessed." );
-      var masterLightPath = this.doIntegrate( tmpGroup );
-      if ( masterLightPath.isEmpty() )
-        throw new Error( "Error integrating light frames." );
+
+      if ( this.integrate )
+      {
+        var tmpGroup = new FrameGroup( ImageType.LIGHT, filter, binning, exposureTime, null, false );
+        for ( var c = 0; c < images.length; ++c )
+        {
+          var filePath = images[ c ]; // outputData.outputImage
+          if ( !filePath.isEmpty() )
+            if ( File.exists( filePath ) )
+              tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
+            else
+              console.warningln( "** Warning: File does not exist after image registration: " + filePath );
+        }
+        if ( tmpGroup.fileItems.length < 1 )
+          throw new Error( "All registered light frame files have been removed or cannot be accessed." );
+        var masterLightPath = this.doIntegrate( tmpGroup );
+        if ( masterLightPath.isEmpty() )
+          throw new Error( "Error integrating light frames." );
+      }
     }
   }
 
@@ -2022,7 +2026,7 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
           masterBiasPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
         }
 
-  let exactDarkExposureTime = imageType == ImageType.FLAT && this.flatDarksOnly;
+  let exactDarkExposureTime = ( imageType == ImageType.FLAT ) && this.flatDarksOnly;
   let masterDarkPath = this.getMasterDarkFrame( binning, exptime, exactDarkExposureTime );
 
   // skip flat calibration if no masterBias and no masterDark have been found
