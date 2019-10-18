@@ -2031,6 +2031,7 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
 
   // skip flat calibration if no masterBias and no masterDark have been found
   if ( exactDarkExposureTime )
+  {
     if ( masterDarkPath.isEmpty() && !masterBiasEnabled )
     {
       // Return the frame group file set since calibration has been skipped but
@@ -2049,9 +2050,10 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
       console.noteln( "************************************************************" );
       return retVal;
     }
-  else if ( masterBiasEnabled )
-  {
-    console.noteln( "<end><cbr><br>* " + StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
+    else if ( masterBiasEnabled )
+    {
+      console.noteln( "<end><cbr><br>* " + StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
+    }
   }
 
   var IC = new ImageCalibration;
