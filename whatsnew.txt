@@ -1,5 +1,8 @@
 - automatic light weights computation
 - automatic selection of reference frame
 - multiple duration/filter/binning light frame groups processed
+    - flag to group all light frames even with different duration (to avoid HDR, different exposures is reported)
 - always calibrate flat with bias if provided
+- calibration groups frames in a group by duration to match the correct dark frame (if frames with different durations are grouped)
 - refresh dark grouping if exposure tolerance is changed
+- refresh lights grouping if grouping flag is changed

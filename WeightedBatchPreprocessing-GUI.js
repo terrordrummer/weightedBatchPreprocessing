@@ -1815,6 +1815,22 @@ function FileControl( parent, imageType )
       this.calibrateOnlySizer.add( this.calibrateOnlyCheckBox );
       this.calibrateOnlySizer.addStretch();
 
+      this.groupLightsWithDifferentExposureCheckBox = new CheckBox( this );
+      this.groupLightsWithDifferentExposureCheckBox.text = "Group lights with different exposures";
+      this.groupLightsWithDifferentExposureCheckBox.toolTip = "<p>When this option is active light frames with same binning and filter will be grouped and integrated together even if they have different exposures.</p>";
+      this.groupLightsWithDifferentExposureCheckBox.onCheck = function( checked )
+      {
+        engine.groupLightsOfDifferentExposure = checked;
+        var lightsPage = this.dialog.tabBox.pageControlByIndex( ImageType.LIGHT );
+        engine.reconstructGroups();
+        parent.dialog.refreshTreeBoxes();
+      };
+
+      this.groupLightsWithDifferentExposureSizer = new HorizontalSizer;
+      this.groupLightsWithDifferentExposureSizer.addUnscaledSpacing( this.dialog.labelWidth1 + this.logicalPixelsToPhysical( 4 + 6 ) ); // + spacing + integration control margin
+      this.groupLightsWithDifferentExposureSizer.add( this.groupLightsWithDifferentExposureCheckBox );
+      this.groupLightsWithDifferentExposureSizer.addStretch();
+
       this.cosmeticCorrectionControl = new CosmeticCorrectionControl( this );
       this.deBayeringControl = new DeBayerControl( this );
       this.lightsRegistrationControl = new LightsRegistrationControl( this );
@@ -1825,6 +1841,8 @@ function FileControl( parent, imageType )
       this.imageIntegrationControl = new ImageIntegrationControl( this, ImageType.LIGHT, true /*expand*/ );
 
       this.rightPanelSizer.add( this.calibrateOnlySizer );
+      this.rightPanelSizer.addSpacing( 8 );
+      this.rightPanelSizer.add( this.groupLightsWithDifferentExposureSizer );
       this.rightPanelSizer.addSpacing( 8 );
       this.rightPanelSizer.add( this.cosmeticCorrectionControl );
       this.rightPanelSizer.addSpacing( 8 );
@@ -2792,30 +2810,25 @@ StackDialog.prototype.refreshTreeBoxes = function()
     let imageType = frameGroup.imageType;
     let binning = frameGroup.binning.toString();
     let filter = frameGroup.filter;
-    let exposureTime = frameGroup.exposureTime;
-
-    console.noteln( "process frameGroup:", frameGroup );
+    let exposureTimes = frameGroup.exposureTimes;
 
     var node;
     var treeNode;
 
     if ( !tree.hasOwnProperty( imageType ) )
     {
-      console.noteln( "Create new group for imageType :", imageType );
       // no image binning created, instantiate the node
       tree[ imageType ] = {};
       treeNode = tree[ imageType ];
     }
     else
     {
-      console.noteln( "Pick existing group for imageType :", imageType );
       treeNode = tree[ imageType ];
       node = treeNode.node;
     }
 
     if ( !treeNode.hasOwnProperty( binning ) )
     {
-      console.noteln( "Create new BINNING :", binning );
       // no image binning created, instantiate the node
       node = new TreeBoxNode;
       this.tabBox.pageControlByIndex( imageType ).treeBox.add( node );
@@ -2829,52 +2842,48 @@ StackDialog.prototype.refreshTreeBoxes = function()
     }
     else
     {
-      console.noteln( "Pick existing BINNING :", binning );
       treeNode = treeNode[ binning ];
       node = treeNode.node;
     }
 
-    if ( imageType !== ImageType.BIAS )
+    // BIASes and DARKs are not grouped by filter 
+    if ( imageType !== ImageType.BIAS && imageType !== ImageType.DARK )
     {
 
-      if ( imageType !== ImageType.DARK && filter.length > 0 )
+      let filterName = filter.length > 0 ? filter : 'noFilter';
+      if ( !treeNode.hasOwnProperty( filterName ) )
       {
-        if ( !treeNode.hasOwnProperty( filter ) )
-        {
-          console.noteln( "Create new filter group :", filter );
-          node = new TreeBoxNode( node );
-          node.expanded = true;
-          node.setText( 0, filter );
-          node.nodeData_type = "FrameGroup";
-          node.nodeData_index = i;
-          treeNode[ filter ] = {};
-          treeNode[ filter ].node = node;
-          treeNode = treeNode[ filter ];
-        }
-        else
-        {
-          console.noteln( "Pick existing filter group :", filter );
-          treeNode = treeNode[ filter ];
-          node = treeNode.node;
-
-        }
-      }
-
-      if ( !treeNode.hasOwnProperty( exposureTime ) )
-      {
-        console.noteln( "Create new exposureTime group :", exposureTime );
         node = new TreeBoxNode( node );
         node.expanded = true;
-        node.setText( 0, format( "%.2fs", exposureTime ) );
+        node.setText( 0, filterName );
         node.nodeData_type = "FrameGroup";
         node.nodeData_index = i;
-        treeNode[ exposureTime ] = {};
-        treeNode[ exposureTime ].node = node;
+        treeNode[ filterName ] = {};
+        treeNode[ filterName ].node = node;
+        treeNode = treeNode[ filterName ];
       }
       else
       {
-        console.noteln( "Pick existing exposureTime group :", exposureTime );
-        node = treeNode[ exposureTime ].node;
+        treeNode = treeNode[ filterName ];
+        node = treeNode.node;
+
+      }
+
+      let exposureTimesString = exposureTimes.length == 1 ? format( "%.2fs", exposureTimes[ 0 ] ) : "[" + exposureTimes.map( exp => format( "%.2fs", exp ) ).join( ' , ' ) + ']';
+      if ( !treeNode.hasOwnProperty( exposureTimesString ) )
+      {
+
+        node = new TreeBoxNode( node );
+        node.expanded = true;
+        node.setText( 0, exposureTimesString );
+        node.nodeData_type = "FrameGroup";
+        node.nodeData_index = i;
+        treeNode[ exposureTimesString ] = {};
+        treeNode[ exposureTimesString ].node = node;
+      }
+      else
+      {
+        node = treeNode[ exposureTimesString ].node;
       }
     }
 

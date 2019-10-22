@@ -86,6 +86,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   this.filter = ( imageType == ImageType.BIAS || imageType == ImageType.DARK ) ? "" : filter;
   this.binning = binning;
   this.exposureTime = ( imageType == ImageType.BIAS ) ? 0 : exposureTime;
+  this.exposureTimes = [ ( imageType == ImageType.BIAS ) ? 0 : exposureTime ];
   this.masterFrame = masterFrame;
   this.enabled = true;
   this.fileItems = new Array;
@@ -93,7 +94,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   if ( firstItem != null ) // we pass null from importParameters()
     this.fileItems.push( firstItem );
 
-  this.sameParameters = function( imageType, filter, binning, exposureTime, exposureTolerance )
+  this.sameParameters = function( imageType, filter, binning, exposureTime, exposureTolerance, groupLightsOfDifferentExposure )
   {
     if ( this.imageType != imageType )
       return false;
@@ -105,9 +106,10 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
       case ImageType.DARK:
         return this.binning == binning && ( Math.abs( this.exposureTime - exposureTime ) <= exposureTolerance );
       case ImageType.FLAT:
-      case ImageType.LIGHT:
       case ImageType.UNKNOWN:
         return this.binning == binning && this.filter == filter && Math.abs( this.exposureTime - exposureTime ) <= 1e-2;
+      case ImageType.LIGHT:
+        return this.binning == binning && this.filter == filter && ( groupLightsOfDifferentExposure || ( !groupLightsOfDifferentExposure && Math.abs( this.exposureTime - exposureTime ) <= 1e-2 ) );
     }
     return false;
   }
@@ -164,6 +166,15 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
 
     return [ true, "" ];
   };
+
+  this.addExposureTime = function( time )
+  {
+    var times = new Set( this.exposureTimes );
+    if ( !times.has( time ) )
+    {
+      this.exposureTimes.push( time );
+    }
+  }
 
   this.toString = function()
   {
@@ -566,10 +577,10 @@ StackEngine.prototype.showIntegrationWarning = function()
   return true;
 };
 
-StackEngine.prototype.findGroup = function( imageType, filter, binning, exposureTime )
+StackEngine.prototype.findGroup = function( imageType, filter, binning, exposureTime, darkExposureTolerance, groupLightsOfDifferentExposure )
 {
   for ( var i = 0; i < this.frameGroups.length; ++i )
-    if ( this.frameGroups[ i ].sameParameters( imageType, filter, binning, exposureTime, this.darkExposureTolerance ) )
+    if ( this.frameGroups[ i ].sameParameters( imageType, filter, binning, exposureTime, darkExposureTolerance, groupLightsOfDifferentExposure ) )
       return i;
   return -1;
 };
@@ -719,10 +730,11 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
 
   if ( this.frameGroups.length > 0 && !isMaster )
   {
-    var i = this.findGroup( imageType, filter, binning, exposureTime, this.darkExposureTolerance );
+    var i = this.findGroup( imageType, filter, binning, exposureTime, this.darkExposureTolerance, this.groupLightsOfDifferentExposure );
     if ( i >= 0 )
     {
       this.frameGroups[ i ].fileItems.push( item );
+      this.frameGroups[ i ].addExposureTime( exposureTime );
       return true;
     }
   }
@@ -2051,9 +2063,8 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
   // process all groups
   for ( var i = 0; i < exposures.length; i++ )
   {
-
     let exptime = exposures[ i ];
-    var frameset = framesetByDuration[ exp ]; // frames to calibrate
+    var frameset = framesetByDuration[ exptime ]; // frames to calibrate
 
     var binning = frameGroup.binning;
     var filter = frameGroup.filter;
@@ -2340,6 +2351,8 @@ StackEngine.prototype.loadSettings = function()
     this.flatDarksOnly = o;
   if ( ( o = load( "calibrateOnly", DataType_Boolean ) ) != null )
     this.calibrateOnly = o;
+  if ( ( o = load( "groupLightsOfDifferentExposure", DataType_Boolean ) ) != null )
+    this.groupLightsOfDifferentExposure = o;
   if ( ( o = load( "generateDrizzleData", DataType_Boolean ) ) != null )
     this.generateDrizzleData = o;
   if ( ( o = load( "bayerPattern", DataType_Int32 ) ) != null )
@@ -2442,6 +2455,7 @@ StackEngine.prototype.saveSettings = function()
   save( "flatsLargeScaleRejectionGrowth", DataType_Int32, this.flatsLargeScaleRejectionGrowth );
   save( "flatDarksOnly", DataType_Boolean, this.flatDarksOnly );
   save( "calibrateOnly", DataType_Boolean, this.calibrateOnly );
+  save( "groupLightsOfDifferentExposure", DataType_Boolean, this.groupLightsOfDifferentExposure );
   save( "generateDrizzleData", DataType_Boolean, this.generateDrizzleData );
   save( "bayerPattern", DataType_Int32, this.bayerPattern );
   save( "debayerMethod", DataType_Int32, this.debayerMethod );
@@ -2512,6 +2526,7 @@ StackEngine.prototype.setDefaultParameters = function()
   this.flatDarksOnly = DEFAULT_FLAT_DARKS_ONLY;
 
   this.calibrateOnly = DEFAULT_CALIBRATE_ONLY;
+  this.groupLightsOfDifferentExposure = DEFAULT_GROUP_LIGHTS_WITH_DIFFERENT_EXPOSURE;
   this.generateDrizzleData = DEFAULT_GENERATE_DRIZZLE_DATA;
 
   this.cosmeticCorrection = DEFAULT_COSMETIC_CORRECTION;
@@ -2681,6 +2696,9 @@ StackEngine.prototype.importParameters = function()
 
   if ( Parameters.has( "calibrateOnly" ) )
     this.calibrateOnly = Parameters.getBoolean( "calibrateOnly" );
+
+  if ( Parameters.has( "groupLightsOfDifferentExposure" ) )
+    this.groupLightsOfDifferentExposure = Parameters.getBoolean( "groupLightsOfDifferentExposure" );
 
   if ( Parameters.has( "generateDrizzleData" ) )
     this.generateDrizzleData = Parameters.getBoolean( "generateDrizzleData" );
@@ -2853,6 +2871,7 @@ StackEngine.prototype.exportParameters = function()
   Parameters.set( "flatDarksOnly", this.flatDarksOnly );
 
   Parameters.set( "calibrateOnly", this.calibrateOnly );
+  Parameters.set( "groupLightsOfDifferentExposure", this.groupLightsOfDifferentExposure );
   Parameters.set( "generateDrizzleData", this.generateDrizzleData );
 
   Parameters.set( "cosmeticCorrection", this.cosmeticCorrection );
