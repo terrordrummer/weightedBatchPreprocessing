@@ -110,6 +110,8 @@ var ImageType = {
 #define DEFAULT_SA_NOISE_REDUCTION          0
 #define DEFAULT_SA_USE_TRIANGLE_SIMILARITY  true
 
+#define DEFAULT_FRAME_GROUPS []
+
 /* beautify ignore:end */
 
 // ----------------------------------------------------------------------------

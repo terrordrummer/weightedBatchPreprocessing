@@ -77,6 +77,11 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   this.__base__ = Object;
   this.__base__();
 
+  if ( filter == undefined )
+  {
+    console.warningln( "UNDEFINED filter prop" );
+  }
+
   this.imageType = imageType;
   this.filter = ( imageType == ImageType.BIAS || imageType == ImageType.DARK ) ? "" : filter;
   this.binning = binning;
@@ -92,14 +97,20 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   {
     if ( this.imageType != imageType )
       return false;
-    if ( this.binning != binning )
-      return false;
-    if ( this.imageType == ImageType.BIAS )
-      return true;
-    if ( this.imageType == ImageType.DARK || this.imageType == ImageType.LIGHT )
-      return Math.abs( this.exposureTime - exposureTime ) <= exposureTolerance;
-    return this.filter == filter;
-  };
+
+    switch ( imageType )
+    {
+      case ImageType.BIAS:
+        return this.binning == binning
+      case ImageType.DARK:
+        return this.binning == binning && ( Math.abs( this.exposureTime - exposureTime ) <= exposureTolerance );
+      case ImageType.FLAT:
+      case ImageType.LIGHT:
+      case ImageType.UNKNOWN:
+        return this.binning == binning && this.filter == filter && Math.abs( this.exposureTime - exposureTime ) <= 1e-2;
+    }
+    return false;
+  }
 
   // Returns an array [good:Boolean,reason:String]
   this.rejectionIsGood = function( rejection )
@@ -251,7 +262,7 @@ function StackEngine()
 
   this.diagnosticMessages = new Array;
 
-  this.frameGroups = new Array;
+  this.frameGroups = DEFAULT_FRAME_GROUPS;
 
   // General options
   this.outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
@@ -599,7 +610,7 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
   if ( !this.checkFile( filePath ) )
     return false;
 
-  var forcedType = imageType != undefined && imageType > ImageType.UNKNOWN;
+  var forcedType = imageType != undefined && imageType != ImageType.UNKNOWN;
   if ( !forcedType )
     imageType = ImageType.UNKNOWN;
 
@@ -774,6 +785,27 @@ StackEngine.prototype.deleteFrameSet = function( imageType )
     if ( this.frameGroups[ i ].imageType == imageType )
       this.frameGroups.splice( i--, 1 );
 };
+
+StackEngine.prototype.reconstructGroups = function()
+{
+  // flatten image
+  var filesContainer = [];
+  let types = [ ImageType.UNKNOWN, ImageType.BIAS, ImageType.DARK, ImageType.FLAT, ImageType.LIGHT ];
+
+  for ( var i = 0; i < types.length; ++i )
+    filesContainer[ types[ i ] ] = [];
+
+  for ( var i = 0; i < this.frameGroups.length; ++i )
+    for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
+      filesContainer[ this.frameGroups[ i ].imageType ].push( this.frameGroups[ i ].fileItems[ j ].filePath );
+
+  for ( var i = 0; i < types.length; ++i )
+    this.deleteFrameSet( types[ i ] );
+
+  for ( var i = 0; i < types.length; ++i )
+    for ( var j = 0; j < filesContainer[ types[ i ] ].length; ++j )
+      this.addFile( filesContainer[ types[ i ] ][ j ], types[ i ] );
+}
 
 StackEngine.prototype.inputHints = function()
 {
@@ -1861,7 +1893,7 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   if ( !frameGroup.filter.isEmpty() )
   {
     // Make sure the filter postfix includes only valid file name characters.
-    postfix += "-FILTER_" + frameGroup.cleanFilterName();
+    postfix += "-FILTER_" + frameGroup.filter.cleanFilterName();
     keywords.push( new FITSKeyword( "FILTER", frameGroup.filter, "Filter used when taking image" ) );
   }
 
@@ -1987,8 +2019,6 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
 {
   var imageType = frameGroup.imageType;
 
-  var frameset = new Array; // frames to calibrate
-  var a_exp = new Array; // all EXPTIME values
   var referenceImageIndex = -1; // index of registration reference frame
 
   console.noteln( "<end><cbr><br>",
@@ -1996,149 +2026,165 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
   console.noteln( "* Begin calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
   console.noteln( "************************************************************" );
 
+  // Despite the current integration grouping  wihch can group frames with different durations,
+  // the calibration should proceed as folows:
+  // 1. grouping images with same duration
+  // 2. find the proper bias / dark / flat
+  // 3. calibrate
+  var framesetByDuration = {}
+  var exposures = [];
+
   for ( var i = 0; i < frameGroup.fileItems.length; ++i )
   {
     var filePath = frameGroup.fileItems[ i ].filePath;
     if ( filePath == this.referenceImage )
       referenceImageIndex = i;
-    frameset.push( filePath );
-    a_exp.push( frameGroup.fileItems[ i ].exposureTime );
-  }
-
-  var exptime = 0;
-  a_exp = a_exp.removeDuplicateElements();
-  if ( a_exp.length > 0 )
-    exptime = ( a_exp.length > 1 ) ? Math.maxElem( a_exp ) : a_exp[ 0 ];
-
-  var binning = frameGroup.binning;
-  var filter = frameGroup.filter;
-
-  var masterBiasEnabled = false;
-  var masterBiasPath = "";
-
-  // get the master bias
-  for ( let i = 0; i < this.frameGroups.length; ++i )
-    if ( this.frameGroups[ i ].masterFrame )
-      if ( this.frameGroups[ i ].imageType == ImageType.BIAS )
-        if ( this.frameGroups[ i ].binning == binning )
-        {
-          masterBiasEnabled = true;
-          masterBiasPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
-        }
-
-  let exactDarkExposureTime = ( imageType == ImageType.FLAT ) && this.flatDarksOnly;
-  let masterDarkPath = this.getMasterDarkFrame( binning, exptime, exactDarkExposureTime );
-
-  // skip flat calibration if no masterBias and no masterDark have been found
-  if ( exactDarkExposureTime )
-  {
-    if ( masterDarkPath.isEmpty() && !masterBiasEnabled )
+    let expTime = frameGroup.fileItems[ i ].exposureTime;
+    if ( !framesetByDuration.hasOwnProperty( expTime ) )
     {
-      // Return the frame group file set since calibration has been skipped but
-      // the process should continue with the uncalibrated frames.
-      let retVal = [];
-      for ( let i = 0; i < this.frameGroups.length; ++i )
-        if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
-          if ( this.frameGroups[ i ].binning == binning && this.frameGroups[ i ].filter == filter )
-            for ( let j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
-              retVal[ j ] = [ this.frameGroups[ i ].fileItems[ j ].filePath ];
-
-      console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- neither master bias provided nor master dark matching the exposure has been found" );
-      console.noteln( "<end><cbr><br>",
-        "************************************************************" );
-      console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
-      console.noteln( "************************************************************" );
-      return retVal;
+      framesetByDuration[ expTime ] = [];
+      exposures.push( expTime );
     }
-    else if ( masterBiasEnabled )
-    {
-      console.noteln( "<end><cbr><br>* " + StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
-    }
+    framesetByDuration[ expTime ].push( filePath );
   }
 
-  var IC = new ImageCalibration;
-
-  IC.inputHints = this.inputHints();
-  IC.outputHints = this.outputHints();
-  IC.targetFrames = frameset.enableTargetFrames( 2 );
-  IC.masterBiasEnabled = false;
-  IC.masterDarkEnabled = false;
-  IC.masterFlatEnabled = false;
-  IC.calibrateBias = true; // relevant if we define overscan areas
-  IC.calibrateDark = true; // assume the master dark includes the bias signal
-  IC.calibrateFlat = false; // assume we have calibrated each individual flat frame
-  IC.optimizeDarks = this.optimizeDarks;
-  IC.darkCFADetectionMode = this.cfaImages ? ImageCalibration.prototype.ForceCFA : ImageCalibration.prototype.DetectCFA;
-  IC.darkOptimizationThreshold = this.darkOptimizationThreshold; // ### deprecated - retained for compatibility
-  IC.darkOptimizationLow = this.darkOptimizationLow;
-  IC.darkOptimizationWindow = this.darkOptimizationWindow;
-  IC.outputExtension = ".xisf";
-  IC.outputPrefix = "";
-  IC.outputPostfix = "_c";
-  IC.evaluateNoise = this.evaluateNoise && imageType == ImageType.LIGHT && !this.cfaImages; // for CFAs, evaluate noise after debayer
-  IC.outputSampleFormat = ImageCalibration.prototype.f32;
-  IC.overwriteExistingFiles = true;
-  IC.onError = ImageCalibration.prototype.Abort;
-
-  if ( this.overscan.enabled )
+  // process all groups
+  for ( var i = 0; i < exposures.length; i++ )
   {
-    IC.overscanEnabled = true;
-    IC.overscanImageX0 = this.overscan.imageRect.x0;
-    IC.overscanImageY0 = this.overscan.imageRect.y0;
-    IC.overscanImageX1 = this.overscan.imageRect.x1;
-    IC.overscanImageY1 = this.overscan.imageRect.y1;
-    IC.overscanRegions = [ // enabled, sourceX0, sourceY0, sourceX1, sourceY1, targetX0, targetY0, targetX1, targetY1
-      [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
-      [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
-      [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
-      [ false, 0, 0, 0, 0, 0, 0, 0, 0 ]
-    ];
-    for ( let i = 0; i < 4; ++i )
-      if ( this.overscan.overscan[ i ].enabled )
-      {
-        IC.overscanRegions[ i ][ 0 ] = true;
-        IC.overscanRegions[ i ][ 1 ] = this.overscan.overscan[ i ].sourceRect.x0;
-        IC.overscanRegions[ i ][ 2 ] = this.overscan.overscan[ i ].sourceRect.y0;
-        IC.overscanRegions[ i ][ 3 ] = this.overscan.overscan[ i ].sourceRect.x1;
-        IC.overscanRegions[ i ][ 4 ] = this.overscan.overscan[ i ].sourceRect.y1;
-        IC.overscanRegions[ i ][ 5 ] = this.overscan.overscan[ i ].targetRect.x0;
-        IC.overscanRegions[ i ][ 6 ] = this.overscan.overscan[ i ].targetRect.y0;
-        IC.overscanRegions[ i ][ 7 ] = this.overscan.overscan[ i ].targetRect.x1;
-        IC.overscanRegions[ i ][ 8 ] = this.overscan.overscan[ i ].targetRect.y1;
-      }
-  }
 
-  IC.masterBiasEnabled = masterBiasEnabled;
-  IC.masterBiasPath = masterBiasPath
+    let exptime = exposures[ i ];
+    var frameset = framesetByDuration[ exp ]; // frames to calibrate
 
-  IC.masterDarkEnabled = !masterDarkPath.isEmpty();
-  IC.masterDarkPath = masterDarkPath;
+    var binning = frameGroup.binning;
+    var filter = frameGroup.filter;
 
-  if ( imageType == ImageType.FLAT )
-    IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/flat" );
-  else if ( imageType == ImageType.LIGHT )
-  {
-    // Get master flat with matching parameters
-    for ( var i = 0; i < this.frameGroups.length; ++i )
+    var masterBiasEnabled = false;
+    var masterBiasPath = "";
+
+    // get the master bias
+    for ( let i = 0; i < this.frameGroups.length; ++i )
       if ( this.frameGroups[ i ].masterFrame )
-        if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
-          if ( this.frameGroups[ i ].binning == binning && this.frameGroups[ i ].filter == filter )
+        if ( this.frameGroups[ i ].imageType == ImageType.BIAS )
+          if ( this.frameGroups[ i ].binning == binning )
           {
-            IC.masterFlatEnabled = true;
-            IC.masterFlatPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
-            break;
+            masterBiasEnabled = true;
+            masterBiasPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
           }
-    IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/light" );
+
+    let exactDarkExposureTime = ( imageType == ImageType.FLAT ) && this.flatDarksOnly;
+    let masterDarkPath = this.getMasterDarkFrame( binning, exptime, exactDarkExposureTime );
+
+    // skip flat calibration if no masterBias and no masterDark have been found
+    if ( exactDarkExposureTime )
+    {
+      if ( masterDarkPath.isEmpty() && !masterBiasEnabled )
+      {
+        // Return the frame group file set since calibration has been skipped but
+        // the process should continue with the uncalibrated frames.
+        let retVal = [];
+        for ( let i = 0; i < this.frameGroups.length; ++i )
+          if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
+            if ( this.frameGroups[ i ].binning == binning && this.frameGroups[ i ].filter == filter )
+              for ( let j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
+                retVal[ j ] = [ this.frameGroups[ i ].fileItems[ j ].filePath ];
+
+        console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- neither master bias provided nor master dark matching the exposure has been found" );
+        console.noteln( "<end><cbr><br>",
+          "************************************************************" );
+        console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
+        console.noteln( "************************************************************" );
+        return retVal;
+      }
+      else if ( masterBiasEnabled )
+      {
+        console.noteln( "<end><cbr><br>* " + StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
+      }
+    }
+
+    var IC = new ImageCalibration;
+
+    IC.inputHints = this.inputHints();
+    IC.outputHints = this.outputHints();
+    IC.targetFrames = frameset.enableTargetFrames( 2 );
+    IC.masterBiasEnabled = false;
+    IC.masterDarkEnabled = false;
+    IC.masterFlatEnabled = false;
+    IC.calibrateBias = true; // relevant if we define overscan areas
+    IC.calibrateDark = true; // assume the master dark includes the bias signal
+    IC.calibrateFlat = false; // assume we have calibrated each individual flat frame
+    IC.optimizeDarks = this.optimizeDarks;
+    IC.darkCFADetectionMode = this.cfaImages ? ImageCalibration.prototype.ForceCFA : ImageCalibration.prototype.DetectCFA;
+    IC.darkOptimizationThreshold = this.darkOptimizationThreshold; // ### deprecated - retained for compatibility
+    IC.darkOptimizationLow = this.darkOptimizationLow;
+    IC.darkOptimizationWindow = this.darkOptimizationWindow;
+    IC.outputExtension = ".xisf";
+    IC.outputPrefix = "";
+    IC.outputPostfix = "_c";
+    IC.evaluateNoise = this.evaluateNoise && imageType == ImageType.LIGHT && !this.cfaImages; // for CFAs, evaluate noise after debayer
+    IC.outputSampleFormat = ImageCalibration.prototype.f32;
+    IC.overwriteExistingFiles = true;
+    IC.onError = ImageCalibration.prototype.Abort;
+
+    if ( this.overscan.enabled )
+    {
+      IC.overscanEnabled = true;
+      IC.overscanImageX0 = this.overscan.imageRect.x0;
+      IC.overscanImageY0 = this.overscan.imageRect.y0;
+      IC.overscanImageX1 = this.overscan.imageRect.x1;
+      IC.overscanImageY1 = this.overscan.imageRect.y1;
+      IC.overscanRegions = [ // enabled, sourceX0, sourceY0, sourceX1, sourceY1, targetX0, targetY0, targetX1, targetY1
+        [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
+        [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
+        [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
+        [ false, 0, 0, 0, 0, 0, 0, 0, 0 ]
+      ];
+      for ( let i = 0; i < 4; ++i )
+        if ( this.overscan.overscan[ i ].enabled )
+        {
+          IC.overscanRegions[ i ][ 0 ] = true;
+          IC.overscanRegions[ i ][ 1 ] = this.overscan.overscan[ i ].sourceRect.x0;
+          IC.overscanRegions[ i ][ 2 ] = this.overscan.overscan[ i ].sourceRect.y0;
+          IC.overscanRegions[ i ][ 3 ] = this.overscan.overscan[ i ].sourceRect.x1;
+          IC.overscanRegions[ i ][ 4 ] = this.overscan.overscan[ i ].sourceRect.y1;
+          IC.overscanRegions[ i ][ 5 ] = this.overscan.overscan[ i ].targetRect.x0;
+          IC.overscanRegions[ i ][ 6 ] = this.overscan.overscan[ i ].targetRect.y0;
+          IC.overscanRegions[ i ][ 7 ] = this.overscan.overscan[ i ].targetRect.x1;
+          IC.overscanRegions[ i ][ 8 ] = this.overscan.overscan[ i ].targetRect.y1;
+        }
+    }
+
+    IC.masterBiasEnabled = masterBiasEnabled;
+    IC.masterBiasPath = masterBiasPath
+
+    IC.masterDarkEnabled = !masterDarkPath.isEmpty();
+    IC.masterDarkPath = masterDarkPath;
+
+    if ( imageType == ImageType.FLAT )
+      IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/flat" );
+    else if ( imageType == ImageType.LIGHT )
+    {
+      // Get master flat with matching parameters
+      for ( var i = 0; i < this.frameGroups.length; ++i )
+        if ( this.frameGroups[ i ].masterFrame )
+          if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
+            if ( this.frameGroups[ i ].binning == binning && this.frameGroups[ i ].filter == filter )
+            {
+              IC.masterFlatEnabled = true;
+              IC.masterFlatPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
+              break;
+            }
+      IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/light" );
+    }
+
+    if ( IC.masterBiasEnabled )
+      console.noteln( "* Master bias: " + IC.masterBiasPath );
+    if ( IC.masterDarkEnabled )
+      console.noteln( "* Master dark: " + IC.masterDarkPath );
+    if ( IC.masterFlatEnabled )
+      console.noteln( "* Master flat: " + IC.masterFlatPath );
+
+    var ok = IC.executeGlobal();
   }
-
-  if ( IC.masterBiasEnabled )
-    console.noteln( "* Master bias: " + IC.masterBiasPath );
-  if ( IC.masterDarkEnabled )
-    console.noteln( "* Master dark: " + IC.masterDarkPath );
-  if ( IC.masterFlatEnabled )
-    console.noteln( "* Master flat: " + IC.masterFlatPath );
-
-  var ok = IC.executeGlobal();
 
   console.noteln( "<end><cbr><br>",
     "************************************************************" );
@@ -2176,6 +2222,20 @@ StackEngine.prototype.purgeRemovedElements = function()
         this.frameGroups.splice( i, 1 );
     }
 };
+
+StackEngine.prototype.framesGroupsToStringData = function()
+{
+  // save files structure
+  return JSON.stringify( this.frameGroups );
+}
+
+StackEngine.prototype.framesGroupsFromStringData = function( data )
+{
+  let groupsData = JSON.parse( data );
+  for ( var i = 0; i < groupsData.length; ++i )
+    for ( var j = 0; j < groupsData[ i ].fileItems.length; ++j )
+      this.addFile( groupsData[ i ].fileItems[ j ].filePath, groupsData[ i ].imageType );
+}
 
 StackEngine.prototype.loadSettings = function()
 {
@@ -2318,6 +2378,8 @@ StackEngine.prototype.loadSettings = function()
     this.useTriangleSimilarity = o;
   if ( ( o = load( "integrate", DataType_Boolean ) ) != null )
     this.integrate = o;
+  if ( ( o = load( "frameGroups", DataType_String ) ) != null )
+    this.framesGroupsFromStringData( o );
 };
 
 StackEngine.prototype.saveSettings = function()
@@ -2398,6 +2460,8 @@ StackEngine.prototype.saveSettings = function()
   save( "noiseReductionFilterRadius", DataType_Int32, this.noiseReductionFilterRadius );
   save( "useTriangleSimilarity", DataType_Boolean, this.useTriangleSimilarity );
   save( "integrate", DataType_Boolean, this.integrate );
+
+  save( "frameGroups", DataType_String, this.framesGroupsToStringData() );
 };
 
 StackEngine.prototype.setDefaultParameters = function()
@@ -2475,14 +2539,14 @@ StackEngine.prototype.setDefaultParameters = function()
   this.referenceImage = "";
 
   this.integrate = DEFAULT_INTEGRATE;
+
+  this.frameGroups = DEFAULT_FRAME_GROUPS;
 };
 
 StackEngine.prototype.importParameters = function()
 {
   this.setDefaultParameters();
   this.loadSettings();
-
-  this.frameGroups.length = 0;
 
   if ( Parameters.has( "outputDirectory" ) )
     this.outputDirectory = Parameters.getString( "outputDirectory" );
@@ -2681,46 +2745,49 @@ StackEngine.prototype.importParameters = function()
   if ( Parameters.has( "integrate" ) )
     this.integrate = Parameters.getBoolean( "integrate" );
 
-  if ( this.exportCalibrationFiles )
-    for ( var i = 0;; ++i )
-    {
-      if ( !Parameters.hasIndexed( "group_imageType", i ) ||
-        !Parameters.hasIndexed( "group_filter", i ) ||
-        !Parameters.hasIndexed( "group_binning", i ) ||
-        !Parameters.hasIndexed( "group_exposureTime", i ) ||
-        !Parameters.hasIndexed( "group_masterFrame", i ) ||
-        !Parameters.hasIndexed( "group_enabled", i ) )
-      {
-        break;
-      }
+  if ( Parameters.has( "frameGroups" ) )
+    this.framesGroupsFromStringData( Parameters.getString( "frameGroups" ) );
 
-      var group = new FrameGroup( Parameters.getIntegerIndexed( "group_imageType", i ),
-        Parameters.getStringIndexed( "group_filter", i ),
-        Parameters.getIntegerIndexed( "group_binning", i ),
-        Parameters.getRealIndexed( "group_exposureTime", i ),
-        null,
-        Parameters.getBooleanIndexed( "group_masterFrame", i ) );
-      group.enabled = Parameters.getBooleanIndexed( "group_enabled", i );
+  // if ( this.exportCalibrationFiles )
+  //   for ( var i = 0;; ++i )
+  //   {
+  //     if ( !Parameters.hasIndexed( "group_imageType", i ) ||
+  //       !Parameters.hasIndexed( "group_filter", i ) ||
+  //       !Parameters.hasIndexed( "group_binning", i ) ||
+  //       !Parameters.hasIndexed( "group_exposureTime", i ) ||
+  //       !Parameters.hasIndexed( "group_masterFrame", i ) ||
+  //       !Parameters.hasIndexed( "group_enabled", i ) )
+  //     {
+  //       break;
+  //     }
 
-      var groupIndexId = Parameters.indexedId( "group_frames", i );
-      for ( var j = 0;; ++j )
-      {
-        if ( !Parameters.hasIndexed( groupIndexId + "_filePath", j ) ||
-          !Parameters.hasIndexed( groupIndexId + "_exposureTime", j ) ||
-          !Parameters.hasIndexed( groupIndexId + "_enabled", j ) )
-        {
-          break;
-        }
+  //     var group = new FrameGroup( Parameters.getIntegerIndexed( "group_imageType", i ),
+  //       Parameters.getStringIndexed( "group_filter", i ),
+  //       Parameters.getIntegerIndexed( "group_binning", i ),
+  //       Parameters.getRealIndexed( "group_exposureTime", i ),
+  //       null,
+  //       Parameters.getBooleanIndexed( "group_masterFrame", i ) );
+  //     group.enabled = Parameters.getBooleanIndexed( "group_enabled", i );
 
-        var item = new FileItem( Parameters.getStringIndexed( groupIndexId + "_filePath", j ),
-          Parameters.getRealIndexed( groupIndexId + "_exposureTime", j ) );
-        item.enabled = Parameters.getBooleanIndexed( groupIndexId + "_enabled", j );
-        group.fileItems.push( item );
-      }
+  //     var groupIndexId = Parameters.indexedId( "group_frames", i );
+  //     for ( var j = 0;; ++j )
+  //     {
+  //       if ( !Parameters.hasIndexed( groupIndexId + "_filePath", j ) ||
+  //         !Parameters.hasIndexed( groupIndexId + "_exposureTime", j ) ||
+  //         !Parameters.hasIndexed( groupIndexId + "_enabled", j ) )
+  //       {
+  //         break;
+  //       }
 
-      if ( group.fileItems.length > 0 ) // don't add empy frame groups
-        this.frameGroups.push( group );
-    }
+  //       var item = new FileItem( Parameters.getStringIndexed( groupIndexId + "_filePath", j ),
+  //         Parameters.getRealIndexed( groupIndexId + "_exposureTime", j ) );
+  //       item.enabled = Parameters.getBooleanIndexed( groupIndexId + "_enabled", j );
+  //       group.fileItems.push( item );
+  //     }
+
+  //     if ( group.fileItems.length > 0 ) // don't add empy frame groups
+  //       this.frameGroups.push( group );
+  //   }
 };
 
 StackEngine.prototype.exportParameters = function()
@@ -2813,27 +2880,29 @@ StackEngine.prototype.exportParameters = function()
 
   Parameters.set( "integrate", this.integrate );
 
-  if ( this.exportCalibrationFiles )
-    for ( var i = 0; i < this.frameGroups.length; ++i )
-      if ( this.frameGroups[ i ].fileItems.length > 0 )
-      {
-        var group = this.frameGroups[ i ];
-        Parameters.setIndexed( "group_imageType", i, group.imageType );
-        Parameters.setIndexed( "group_filter", i, group.filter );
-        Parameters.setIndexed( "group_binning", i, group.binning );
-        Parameters.setIndexed( "group_exposureTime", i, group.exposureTime );
-        Parameters.setIndexed( "group_masterFrame", i, group.masterFrame );
-        Parameters.setIndexed( "group_enabled", i, group.enabled );
+  Parameters.set( "frameGroups", this.framesGroupsToStringData() );
 
-        var groupIndexId = Parameters.indexedId( "group_frames", i );
-        for ( var j = 0; j < group.fileItems.length; ++j )
-        {
-          var item = group.fileItems[ j ];
-          Parameters.setIndexed( groupIndexId + "_filePath", j, item.filePath );
-          Parameters.setIndexed( groupIndexId + "_exposureTime", j, item.exposureTime );
-          Parameters.setIndexed( groupIndexId + "_enabled", j, item.enabled );
-        }
-      }
+  // if ( this.exportCalibrationFiles )
+  //   for ( var i = 0; i < this.frameGroups.length; ++i )
+  //     if ( this.frameGroups[ i ].fileItems.length > 0 )
+  //     {
+  //       var group = this.frameGroups[ i ];
+  //       Parameters.setIndexed( "group_imageType", i, group.imageType );
+  //       Parameters.setIndexed( "group_filter", i, group.filter );
+  //       Parameters.setIndexed( "group_binning", i, group.binning );
+  //       Parameters.setIndexed( "group_exposureTime", i, group.exposureTime );
+  //       Parameters.setIndexed( "group_masterFrame", i, group.masterFrame );
+  //       Parameters.setIndexed( "group_enabled", i, group.enabled );
+
+  //       var groupIndexId = Parameters.indexedId( "group_frames", i );
+  //       for ( var j = 0; j < group.fileItems.length; ++j )
+  //       {
+  //         var item = group.fileItems[ j ];
+  //         Parameters.setIndexed( groupIndexId + "_filePath", j, item.filePath );
+  //         Parameters.setIndexed( groupIndexId + "_exposureTime", j, item.exposureTime );
+  //         Parameters.setIndexed( groupIndexId + "_enabled", j, item.enabled );
+  //       }
+  //     }
 };
 
 StackEngine.prototype.runDiagnostics = function()
@@ -2910,7 +2979,7 @@ StackEngine.prototype.runDiagnostics = function()
 
     for ( var i = 0; i < this.frameGroups.length; ++i )
       if ( !this.frameGroups[ i ].filter.isEmpty() )
-        if ( this.frameGroups[ i ].cleanFilterName() != this.frameGroups[ i ].filter )
+        if ( this.frameGroups[ i ].filter.cleanFilterName() != this.frameGroups[ i ].filter )
           this.warning( "Invalid file name characters will be replaced with underscores " +
             "in filter name: \'" + this.frameGroups[ i ].filter + "\'" );
 

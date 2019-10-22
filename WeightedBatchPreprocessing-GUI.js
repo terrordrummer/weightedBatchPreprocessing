@@ -1744,6 +1744,8 @@ function FileControl( parent, imageType )
       this.darkExposureToleranceSpinBox.onValueUpdated = function( value )
       {
         engine.darkExposureTolerance = value;
+        engine.reconstructGroups();
+        parent.dialog.refreshTreeBoxes();
       };
 
       this.darkExposureToleranceSizer = new HorizontalSizer;
@@ -2782,59 +2784,101 @@ StackDialog.prototype.refreshTreeBoxes = function()
   for ( var j = 0; j < this.tabBox.numberOfPages; ++j )
     this.tabBox.pageControlByIndex( j ).treeBox.clear();
 
+  // map groups to hash-tree
+  var tree = {};
   for ( var i = 0; i < engine.frameGroups.length; ++i )
   {
     var frameGroup = engine.frameGroups[ i ];
+    let imageType = frameGroup.imageType;
+    let binning = frameGroup.binning.toString();
+    let filter = frameGroup.filter;
+    let exposureTime = frameGroup.exposureTime;
 
-    var nodes = new Array;
+    console.noteln( "process frameGroup:", frameGroup );
 
-    /*
-     * NB: We cannot use the TreeBoxNode( TreeBox ) constructor here because
-     * our treeBox object is an instance of StyledTreeBox, which we have
-     * derived from TreeBox. TreeBoxNode's constructor will complain about
-     * treeBox because it is not a 'real' TreeBox. This is a limitation of
-     * current PJSR versions. So we construct an orphan TreeBoxNode and then
-     * add it to treeBox.
-     */
-    //nodes.push( new TreeBoxNode( this.tabBox.pageControlByIndex( frameGroup.imageType ).treeBox ) );
-    var node = new TreeBoxNode;
-    this.tabBox.pageControlByIndex( frameGroup.imageType ).treeBox.add( node );
-    node.expanded = true;
-    node.setText( 0, "Binning " + frameGroup.binning.toString() );
-    node.nodeData_type = "FrameGroup";
-    node.nodeData_index = i;
-    nodes.push( node );
+    var node;
+    var treeNode;
 
-    if ( frameGroup.imageType != ImageType.BIAS )
+    if ( !tree.hasOwnProperty( imageType ) )
     {
-      if ( frameGroup.imageType == ImageType.DARK || frameGroup.imageType == ImageType.LIGHT )
+      console.noteln( "Create new group for imageType :", imageType );
+      // no image binning created, instantiate the node
+      tree[ imageType ] = {};
+      treeNode = tree[ imageType ];
+    }
+    else
+    {
+      console.noteln( "Pick existing group for imageType :", imageType );
+      treeNode = tree[ imageType ];
+      node = treeNode.node;
+    }
+
+    if ( !treeNode.hasOwnProperty( binning ) )
+    {
+      console.noteln( "Create new BINNING :", binning );
+      // no image binning created, instantiate the node
+      node = new TreeBoxNode;
+      this.tabBox.pageControlByIndex( imageType ).treeBox.add( node );
+      node.expanded = true;
+      node.setText( 0, "Binning " + binning );
+      node.nodeData_type = "FrameGroup";
+      node.nodeData_index = i;
+      treeNode[ binning ] = {};
+      treeNode[ binning ].node = node;
+      treeNode = treeNode[ binning ];
+    }
+    else
+    {
+      console.noteln( "Pick existing BINNING :", binning );
+      treeNode = treeNode[ binning ];
+      node = treeNode.node;
+    }
+
+    if ( imageType !== ImageType.BIAS )
+    {
+
+      if ( imageType !== ImageType.DARK && filter.length > 0 )
       {
-        if ( frameGroup.exposureTime > 0 )
+        if ( !treeNode.hasOwnProperty( filter ) )
         {
-          var n = nodes.length;
-          var node = new TreeBoxNode( nodes[ n - 1 ] );
+          console.noteln( "Create new filter group :", filter );
+          node = new TreeBoxNode( node );
           node.expanded = true;
-          node.setText( 0, format( "%.2fs", frameGroup.exposureTime ) );
+          node.setText( 0, filter );
           node.nodeData_type = "FrameGroup";
           node.nodeData_index = i;
-          nodes.push( node );
+          treeNode[ filter ] = {};
+          treeNode[ filter ].node = node;
+          treeNode = treeNode[ filter ];
         }
+        else
+        {
+          console.noteln( "Pick existing filter group :", filter );
+          treeNode = treeNode[ filter ];
+          node = treeNode.node;
+
+        }
+      }
+
+      if ( !treeNode.hasOwnProperty( exposureTime ) )
+      {
+        console.noteln( "Create new exposureTime group :", exposureTime );
+        node = new TreeBoxNode( node );
+        node.expanded = true;
+        node.setText( 0, format( "%.2fs", exposureTime ) );
+        node.nodeData_type = "FrameGroup";
+        node.nodeData_index = i;
+        treeNode[ exposureTime ] = {};
+        treeNode[ exposureTime ].node = node;
       }
       else
       {
-        if ( !frameGroup.filter.isEmpty() )
-        {
-          var node = new TreeBoxNode( nodes[ 0 ] );
-          node.expanded = true;
-          node.setText( 0, frameGroup.filter );
-          node.nodeData_type = "FrameGroup";
-          node.nodeData_index = i;
-          nodes.push( node );
-        }
+        console.noteln( "Pick existing exposureTime group :", exposureTime );
+        node = treeNode[ exposureTime ].node;
       }
     }
 
-    var rootNode = nodes[ nodes.length - 1 ];
+    let rootNode = node;
 
     for ( var j = 0; j < frameGroup.fileItems.length; ++j )
     {

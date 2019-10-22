@@ -1,0 +1,5 @@
+- automatic light weights computation
+- automatic selection of reference frame
+- multiple duration/filter/binning light frame groups processed
+- always calibrate flat with bias if provided
+- refresh dark grouping if exposure tolerance is changed
