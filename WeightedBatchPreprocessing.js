@@ -138,7 +138,7 @@ function main()
     }
   }
 
-  console.hide();
+  // console.hide();
 
   if ( Parameters.isViewTarget )
     throw new Error( TITLE + " can only be executed in the global context." );

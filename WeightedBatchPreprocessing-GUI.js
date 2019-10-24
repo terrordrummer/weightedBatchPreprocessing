@@ -1431,7 +1431,7 @@ function SubframesWeightingControl( parent )
       engine.useBestLightAsReference = false;
       engine.generateSubframesWeightsAfterRegistration = false;
     }
-    this.updateControls();
+    this.dialog.updateControls();
 
   };
 
@@ -1821,7 +1821,6 @@ function FileControl( parent, imageType )
       this.groupLightsWithDifferentExposureCheckBox.onCheck = function( checked )
       {
         engine.groupLightsOfDifferentExposure = checked;
-        var lightsPage = this.dialog.tabBox.pageControlByIndex( ImageType.LIGHT );
         engine.reconstructGroups();
         parent.dialog.refreshTreeBoxes();
       };
@@ -2770,6 +2769,7 @@ StackDialog.prototype.updateControls = function()
         break;
       case ImageType.LIGHT:
         page.calibrateOnlyCheckBox.checked = engine.calibrateOnly;
+        page.groupLightsWithDifferentExposureCheckBox.checked = engine.groupLightsOfDifferentExposure;
         page.cosmeticCorrectionControl.updateControls();
         page.deBayeringControl.updateControls();
         page.lightsRegistrationControl.updateControls();
@@ -2817,7 +2817,6 @@ StackDialog.prototype.refreshTreeBoxes = function()
 
     if ( !tree.hasOwnProperty( imageType ) )
     {
-      // no image binning created, instantiate the node
       tree[ imageType ] = {};
       treeNode = tree[ imageType ];
     }
@@ -2829,7 +2828,6 @@ StackDialog.prototype.refreshTreeBoxes = function()
 
     if ( !treeNode.hasOwnProperty( binning ) )
     {
-      // no image binning created, instantiate the node
       node = new TreeBoxNode;
       this.tabBox.pageControlByIndex( imageType ).treeBox.add( node );
       node.expanded = true;
@@ -2847,26 +2845,29 @@ StackDialog.prototype.refreshTreeBoxes = function()
     }
 
     // BIASes and DARKs are not grouped by filter 
-    if ( imageType !== ImageType.BIAS && imageType !== ImageType.DARK )
+    if ( imageType !== ImageType.BIAS )
     {
 
-      let filterName = filter.length > 0 ? filter : 'noFilter';
-      if ( !treeNode.hasOwnProperty( filterName ) )
+      if ( imageType !== ImageType.DARK )
       {
-        node = new TreeBoxNode( node );
-        node.expanded = true;
-        node.setText( 0, filterName );
-        node.nodeData_type = "FrameGroup";
-        node.nodeData_index = i;
-        treeNode[ filterName ] = {};
-        treeNode[ filterName ].node = node;
-        treeNode = treeNode[ filterName ];
-      }
-      else
-      {
-        treeNode = treeNode[ filterName ];
-        node = treeNode.node;
+        let filterName = filter.length > 0 ? filter : 'noFilter';
+        if ( !treeNode.hasOwnProperty( filterName ) )
+        {
+          node = new TreeBoxNode( node );
+          node.expanded = true;
+          node.setText( 0, filterName );
+          node.nodeData_type = "FrameGroup";
+          node.nodeData_index = i;
+          treeNode[ filterName ] = {};
+          treeNode[ filterName ].node = node;
+          treeNode = treeNode[ filterName ];
+        }
+        else
+        {
+          treeNode = treeNode[ filterName ];
+          node = treeNode.node;
 
+        }
       }
 
       let exposureTimesString = exposureTimes.length == 1 ? format( "%.2fs", exposureTimes[ 0 ] ) : "[" + exposureTimes.map( exp => format( "%.2fs", exp ) ).join( ' , ' ) + ']';
