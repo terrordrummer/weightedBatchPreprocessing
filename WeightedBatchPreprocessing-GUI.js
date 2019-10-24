@@ -519,6 +519,7 @@ function ImageIntegrationControl( parent, imageType, expand )
   this.rejectionAlgorithmComboBox.addItem( "Winsorized Sigma Clipping" );
   this.rejectionAlgorithmComboBox.addItem( "Averaged Sigma Clipping" );
   this.rejectionAlgorithmComboBox.addItem( "Linear Fit Clipping" );
+  this.rejectionAlgorithmComboBox.addItem( "Auto" );
   this.rejectionAlgorithmComboBox.onItemSelected = function( item )
   {
     engine.rejection[ this.parent.parent.imageType ] = item;
@@ -549,7 +550,8 @@ function ImageIntegrationControl( parent, imageType, expand )
     "<p>The <b>min/max</b> method can be used to ensure rejection of extreme values. Min/max performs an " +
     "unconditional rejection of a fixed number of pixels from each stack, without any statistical basis. " +
     "Rejection methods based on robust statistics, such as percentile, Winsorized sigma clipping, linear " +
-    "fitting and averaged sigma clipping are in general preferable.</p>";
+    "fitting and averaged sigma clipping are in general preferable.</p>" +
+    "<p><b>Auto</b> selects the best algorithm depending on the amount of images in the group: ";
 
   this.rejectionAlgorithmSizer = new HorizontalSizer;
   this.rejectionAlgorithmSizer.spacing = 4;
@@ -845,6 +847,17 @@ function ImageIntegrationControl( parent, imageType, expand )
         this.linearFitLowControl.enabled = true;
         this.linearFitHighControl.enabled = true;
         break;
+      case ImageIntegration.prototype.LinearFit + 1:
+        this.minMaxLowLabel.enabled = true;
+        this.minMaxLowSpinBox.enabled = true;
+        this.minMaxHighLabel.enabled = true;
+        this.minMaxHighSpinBox.enabled = true;
+        this.percentileLowControl.enabled = true;
+        this.percentileHighControl.enabled = true;
+        this.sigmaLowControl.enabled = true;
+        this.sigmaHighControl.enabled = true;
+        this.linearFitLowControl.enabled = true;
+        this.linearFitHighControl.enabled = true;
     }
 
     if ( this.imageType == ImageType.FLAT )

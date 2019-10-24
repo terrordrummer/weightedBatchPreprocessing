@@ -117,6 +117,12 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   // Returns an array [good:Boolean,reason:String]
   this.rejectionIsGood = function( rejection )
   {
+
+    if ( rejection > ImageIntegration.prototype.LinearFit )
+    {
+      return [ true, "" ];
+    }
+
     // Invariants
     switch ( rejection )
     {
@@ -129,10 +135,11 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
       default:
         break;
     }
+    let selectedRejection = rejection <= ImageIntegration.prototype.LinearFit ? rejection : this.bestRejectionMethod();
 
     // Selections dependent on the number of frames
     var n = this.fileItems.length;
-    switch ( rejection )
+    switch ( selectedRejection )
     {
       case ImageIntegration.prototype.PercentileClip:
         if ( n > 8 )
@@ -167,6 +174,24 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
     return [ true, "" ];
   };
 
+  this.bestRejectionMethod = function()
+  {
+    var n = this.fileItems.length;
+    if ( n < 8 )
+    {
+      return ImageIntegration.prototype.PercentileClip;
+    }
+    if ( n <= 10 )
+    {
+      return ImageIntegration.prototype.AveragedSigmaClip;
+    }
+    if ( n < 20 )
+    {
+      return ImageIntegration.prototype.WinsorizedSigmaClip;
+    }
+    return ImageIntegration.prototype.LinearFit;
+  }
+
   this.addExposureTime = function( time )
   {
     var times = new Set( this.exposureTimes );
@@ -184,7 +209,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
 
   this.log = function()
   {
-    console.noteln( 'Group of ', StackEngine.imageTypeToString( this.imageType ), ' frames' );
+    console.noteln( 'Group of ', this.fileItems.length, ' ', StackEngine.imageTypeToString( this.imageType ), ' frames' );
     console.noteln( 'BINNING  : ', this.binning );
     console.noteln( 'Filter   : ', this.filter.length > 0 ? this.filter : 'noFilter' );
     console.noteln( 'Exposure : ', this.exposuresToString() );
@@ -194,15 +219,17 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   {
     var a = [];
     if ( !this.filter.isEmpty() )
-      a.push( "filter=\"" + this.filter + "\"" );
-    a.push( "binning=" + this.binning.toString() );
+      a.push( "filter = \"" + this.filter + "\"" );
+    else
+      a.push( "filter = noFilter" );
+    a.push( "binning = " + this.binning.toString() );
     if ( this.exposureTimes.length > 0 )
     {
-      a.push( format( "exposures=%.2fs", this.exposureTime ) );
+      a.push( format( "exposures = %.2fs", this.exposureTime ) );
     }
     if ( this.exposureTimes.length > 0 )
       a.push( 'exposure = ', this.exposuresToString() );
-    a.push( "length=" + this.fileItems.length.toString() );
+    a.push( "length = " + this.fileItems.length.toString() );
     var s = StackEngine.imageTypeToString( this.imageType ) + " frames (";
     s += a[ 0 ];
     for ( var i = 1; i < a.length; ++i )
@@ -1720,7 +1747,8 @@ StackEngine.prototype.doLight = function()
       console.noteln( "************************************************************" );
       console.flush();
 
-      console.noteln( 'actualReferenceImage: ', actualReferenceImage );
+      console.noteln( 'ActualReferenceImage: ', actualReferenceImage );
+      console.noteln( 'Registering ', preRegistrationImagesCount, ' light images' );
       var SA = new StarAlignment;
 
       var registerDirectory = this.outputDirectory + "/registered";
@@ -1767,18 +1795,17 @@ StackEngine.prototype.doLight = function()
           else
             console.warningln( "** Warning: File does not exist after image registration: " + filePath );
       }
+
       if ( images.length < 1 )
-        throw new Error( "All registered light frame files have been removed or cannot be accessed." );
-
-
-      if ( images.length < 3 )
+        console.warningln( "All registered light frame files have been removed or cannot be accessed." );
+      else if ( images.length < 3 )
       {
         let failed = preRegistrationImagesCount - images.length;
-        throw new Error( "Star alignment failed to register " + failed + " images out of " + preRegistrationImagesCount + " provided. A minimum of 3 images must be succesfully registered." );
+        throw new Error( "Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, " provided. A minimum of 3 images must be succesfully registered." );
       }
       else if ( preRegistrationImagesCount - images.length > 0 )
       {
-        console.warningln( "<end><cbr><br>** Warning: failed to register " + preRegistrationImagesCount - images.length + " images out of " + preRegistrationImagesCount );
+        console.warningln( "** Warning: failed to register " + ( preRegistrationImagesCount - images.length ) + " images out of " + preRegistrationImagesCount );
       }
 
       console.noteln( "<end><cbr><br>",
@@ -1838,6 +1865,14 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
 
   frameGroup.log();
 
+  let selectedRejection = this.rejection[ imageType ] <= ImageIntegration.prototype.LinearFit ? this.rejection[ imageType ] : frameGroup.bestRejectionMethod();
+
+  console.noteln( 'Rejection method ', RejectionToString( this.rejection[ imageType ] ) );
+
+  if ( this.rejection[ imageType ] > ImageIntegration.prototype.LinearFit )
+  {
+    console.noteln( 'Rejection method auto-selected: ', RejectionToString( selectedRejection ) );
+  }
   var II = new ImageIntegration;
 
   II.inputHints = this.inputHints();
@@ -1845,7 +1880,7 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   II.stackSizeMB = 1024;
   II.images = frameSet.enableTargetFrames( 2 );
   II.combination = this.combination[ imageType ];
-  II.rejection = this.rejection[ imageType ];
+  II.rejection = selectedRejection;
   II.generateRejectionMaps = this.generateRejectionMaps;
   II.minMaxLow = this.minMaxLow[ imageType ];
   II.minMaxHigh = this.minMaxHigh[ imageType ];
@@ -2442,8 +2477,8 @@ StackEngine.prototype.loadSettings = function()
     this.useTriangleSimilarity = o;
   if ( ( o = load( "integrate", DataType_Boolean ) ) != null )
     this.integrate = o;
-  if ( ( o = load( "frameGroups", DataType_String ) ) != null )
-    this.framesGroupsFromStringData( o );
+  // if ( ( o = load( "frameGroups", DataType_String ) ) != null )
+  //   this.framesGroupsFromStringData( o );
 };
 
 StackEngine.prototype.saveSettings = function()
@@ -2526,7 +2561,7 @@ StackEngine.prototype.saveSettings = function()
   save( "useTriangleSimilarity", DataType_Boolean, this.useTriangleSimilarity );
   save( "integrate", DataType_Boolean, this.integrate );
 
-  save( "frameGroups", DataType_String, this.framesGroupsToStringData() );
+  // save( "frameGroups", DataType_String, this.framesGroupsToStringData() );
 };
 
 StackEngine.prototype.setDefaultParameters = function()
@@ -2818,8 +2853,8 @@ StackEngine.prototype.importParameters = function()
   if ( Parameters.has( "integrate" ) )
     this.integrate = Parameters.getBoolean( "integrate" );
 
-  if ( Parameters.has( "frameGroups" ) )
-    this.framesGroupsFromStringData( Parameters.getString( "frameGroups" ) );
+  // if ( Parameters.has( "frameGroups" ) )
+  //   this.framesGroupsFromStringData( Parameters.getString( "frameGroups" ) );
 
   // if ( this.exportCalibrationFiles )
   //   for ( var i = 0;; ++i )
@@ -2954,7 +2989,7 @@ StackEngine.prototype.exportParameters = function()
 
   Parameters.set( "integrate", this.integrate );
 
-  Parameters.set( "frameGroups", this.framesGroupsToStringData() );
+  // Parameters.set( "frameGroups", this.framesGroupsToStringData() );
 
   // if ( this.exportCalibrationFiles )
   //   for ( var i = 0; i < this.frameGroups.length; ++i )
