@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-engine.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.0
+// This file is part of Weighted Batch Preprocessing Script version 1.1.0
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -77,10 +77,16 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   this.__base__ = Object;
   this.__base__();
 
+  if ( filter == undefined )
+  {
+    console.warningln( "UNDEFINED filter prop" );
+  }
+
   this.imageType = imageType;
   this.filter = ( imageType == ImageType.BIAS || imageType == ImageType.DARK ) ? "" : filter;
   this.binning = binning;
   this.exposureTime = ( imageType == ImageType.BIAS ) ? 0 : exposureTime;
+  this.exposureTimes = [ ( imageType == ImageType.BIAS ) ? 0 : exposureTime ];
   this.masterFrame = masterFrame;
   this.enabled = true;
   this.fileItems = new Array;
@@ -88,22 +94,35 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   if ( firstItem != null ) // we pass null from importParameters()
     this.fileItems.push( firstItem );
 
-  this.sameParameters = function( imageType, filter, binning, exposureTime, exposureTolerance )
+  this.sameParameters = function( imageType, filter, binning, exposureTime, exposureTolerance, groupLightsOfDifferentExposure )
   {
     if ( this.imageType != imageType )
       return false;
-    if ( this.binning != binning )
-      return false;
-    if ( this.imageType == ImageType.BIAS )
-      return true;
-    if ( this.imageType == ImageType.DARK )
-      return Math.abs( this.exposureTime - exposureTime ) <= exposureTolerance;
-    return this.filter == filter;
-  };
+
+    switch ( imageType )
+    {
+      case ImageType.BIAS:
+        return this.binning == binning
+      case ImageType.DARK:
+        return this.binning == binning && ( Math.abs( this.exposureTime - exposureTime ) <= exposureTolerance );
+      case ImageType.FLAT:
+      case ImageType.UNKNOWN:
+        return this.binning == binning && this.filter == filter && Math.abs( this.exposureTime - exposureTime ) <= 1e-3;
+      case ImageType.LIGHT:
+        return this.binning == binning && this.filter == filter && ( groupLightsOfDifferentExposure || ( !groupLightsOfDifferentExposure && Math.abs( this.exposureTime - exposureTime ) <= 1e-2 ) );
+    }
+    return false;
+  }
 
   // Returns an array [good:Boolean,reason:String]
   this.rejectionIsGood = function( rejection )
   {
+
+    if ( rejection > ImageIntegration.prototype.LinearFit )
+    {
+      return [ true, "" ];
+    }
+
     // Invariants
     switch ( rejection )
     {
@@ -116,10 +135,11 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
       default:
         break;
     }
+    let selectedRejection = rejection <= ImageIntegration.prototype.LinearFit ? rejection : this.bestRejectionMethod();
 
     // Selections dependent on the number of frames
     var n = this.fileItems.length;
-    switch ( rejection )
+    switch ( selectedRejection )
     {
       case ImageIntegration.prototype.PercentileClip:
         if ( n > 8 )
@@ -154,15 +174,62 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
     return [ true, "" ];
   };
 
+  this.bestRejectionMethod = function()
+  {
+    var n = this.fileItems.length;
+    if ( n < 8 )
+    {
+      return ImageIntegration.prototype.PercentileClip;
+    }
+    if ( n <= 10 )
+    {
+      return ImageIntegration.prototype.AveragedSigmaClip;
+    }
+    if ( n < 20 )
+    {
+      return ImageIntegration.prototype.WinsorizedSigmaClip;
+    }
+    return ImageIntegration.prototype.LinearFit;
+  }
+
+  this.addExposureTime = function( time )
+  {
+    var times = new Set( this.exposureTimes );
+    if ( !times.has( time ) )
+      this.exposureTimes.push( time );
+  }
+
+  this.exposuresToString = function()
+  {
+    if ( this.exposureTimes.length > 1 )
+      return '[' + this.exposureTimes.map( exposure => format( "%.2fs", exposure ) ).join( ', ' ) + ']';
+    else
+      return format( "%.2fs", this.exposureTime );
+  }
+
+  this.log = function()
+  {
+    console.noteln( 'Group of ', this.fileItems.length, ' ', StackEngine.imageTypeToString( this.imageType ), ' frames' );
+    console.noteln( 'BINNING  : ', this.binning );
+    console.noteln( 'Filter   : ', this.filter.length > 0 ? this.filter : 'noFilter' );
+    console.noteln( 'Exposure : ', this.exposuresToString() );
+  }
+
   this.toString = function()
   {
     var a = [];
     if ( !this.filter.isEmpty() )
-      a.push( "filter=\"" + this.filter + "\"" );
-    a.push( "binning=" + this.binning.toString() );
-    if ( this.exposureTime > 0 )
-      a.push( format( "exposure=%.2fs", this.exposureTime ) );
-    a.push( "length=" + this.fileItems.length.toString() );
+      a.push( "filter = \"" + this.filter + "\"" );
+    else
+      a.push( "filter = noFilter" );
+    a.push( "binning = " + this.binning.toString() );
+    if ( this.exposureTimes.length > 0 )
+    {
+      a.push( format( "exposures = %.2fs", this.exposureTime ) );
+    }
+    if ( this.exposureTimes.length > 0 )
+      a.push( 'exposure = ', this.exposuresToString() );
+    a.push( "length = " + this.fileItems.length.toString() );
     var s = StackEngine.imageTypeToString( this.imageType ) + " frames (";
     s += a[ 0 ];
     for ( var i = 1; i < a.length; ++i )
@@ -251,7 +318,7 @@ function StackEngine()
 
   this.diagnosticMessages = new Array;
 
-  this.frameGroups = new Array;
+  this.frameGroups = DEFAULT_FRAME_GROUPS;
 
   // General options
   this.outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
@@ -555,10 +622,10 @@ StackEngine.prototype.showIntegrationWarning = function()
   return true;
 };
 
-StackEngine.prototype.findGroup = function( imageType, filter, binning, exposureTime )
+StackEngine.prototype.findGroup = function( imageType, filter, binning, exposureTime, darkExposureTolerance, groupLightsOfDifferentExposure )
 {
   for ( var i = 0; i < this.frameGroups.length; ++i )
-    if ( this.frameGroups[ i ].sameParameters( imageType, filter, binning, exposureTime, this.darkExposureTolerance ) )
+    if ( this.frameGroups[ i ].sameParameters( imageType, filter, binning, exposureTime, darkExposureTolerance, groupLightsOfDifferentExposure ) )
       return i;
   return -1;
 };
@@ -599,7 +666,7 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
   if ( !this.checkFile( filePath ) )
     return false;
 
-  var forcedType = imageType != undefined && imageType > ImageType.UNKNOWN;
+  var forcedType = imageType != undefined && imageType != ImageType.UNKNOWN;
   if ( !forcedType )
     imageType = ImageType.UNKNOWN;
 
@@ -658,7 +725,9 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
         case "EXPTIME":
         case "EXPOSURE":
           if ( !forcedExposureTime )
+          {
             exposureTime = parseFloat( value );
+          }
           break;
       }
     }
@@ -704,12 +773,20 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
 
   var item = new FileItem( filePath, exposureTime );
 
-  if ( this.frameGroups.length > 0 && !isMaster )
+  if ( this.frameGroups.length > 0 )
   {
-    var i = this.findGroup( imageType, filter, binning, exposureTime, this.darkExposureTolerance );
+    var i = this.findGroup( imageType, filter, binning, exposureTime, this.darkExposureTolerance, this.groupLightsOfDifferentExposure );
     if ( i >= 0 )
     {
-      this.frameGroups[ i ].fileItems.push( item );
+      if ( isMaster )
+      {
+        this.frameGroups[ i ].fileItems.unshift( item );
+      }
+      else
+      {
+        this.frameGroups[ i ].fileItems.push( item );
+      }
+      this.frameGroups[ i ].addExposureTime( exposureTime );
       return true;
     }
   }
@@ -772,6 +849,27 @@ StackEngine.prototype.deleteFrameSet = function( imageType )
     if ( this.frameGroups[ i ].imageType == imageType )
       this.frameGroups.splice( i--, 1 );
 };
+
+StackEngine.prototype.reconstructGroups = function()
+{
+  // flatten image
+  var filesContainer = [];
+  let types = [ ImageType.UNKNOWN, ImageType.BIAS, ImageType.DARK, ImageType.FLAT, ImageType.LIGHT ];
+
+  for ( var i = 0; i < types.length; ++i )
+    filesContainer[ types[ i ] ] = [];
+
+  for ( var i = 0; i < this.frameGroups.length; ++i )
+    for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
+      filesContainer[ this.frameGroups[ i ].imageType ].push( this.frameGroups[ i ].fileItems[ j ].filePath );
+
+  for ( var i = 0; i < types.length; ++i )
+    this.deleteFrameSet( types[ i ] );
+
+  for ( var i = 0; i < types.length; ++i )
+    for ( var j = 0; j < filesContainer[ types[ i ] ].length; ++j )
+      this.addFile( filesContainer[ types[ i ] ][ j ], types[ i ] );
+}
 
 StackEngine.prototype.inputHints = function()
 {
@@ -1178,22 +1276,11 @@ StackEngine.prototype.ImageDescriptor = function( imageWindow, filePath )
  */
 StackEngine.prototype.getMinMaxDescriptorsValues = function( imagesDescriptors )
 {
-  let FWHM = imagesDescriptors.map( descriptor =>
-  {
-    return descriptor.FWHM;
-  } );
-  let eccentricity = imagesDescriptors.map( descriptor =>
-  {
-    return descriptor.eccentricity;
-  } );
-  let SNR = imagesDescriptors.map( descriptor =>
-  {
-    return descriptor.SNR;
-  } );
-  let noise = imagesDescriptors.map( descriptor =>
-  {
-    return descriptor.noise;
-  } );
+  let FWHM = imagesDescriptors.map( descriptor => descriptor.FWHM );
+  let eccentricity = imagesDescriptors.map( descriptor => descriptor.eccentricity );
+  let SNR = imagesDescriptors.map( descriptor => descriptor.SNR );
+  let noise = imagesDescriptors.map( descriptor => descriptor.noise );
+
   let FWHM_min = Math.min.apply( null, FWHM );
   let FWHM_max = Math.max.apply( null, FWHM );
   let eccentricity_min = Math.min.apply( null, eccentricity );
@@ -1228,16 +1315,13 @@ StackEngine.prototype.findRegistrationReferenceImage = function( descriptors )
   {
     let descriptor = descriptors[ i ];
     if ( descriptor !== undefined )
-    {
       for ( let j = 0; j < descriptor.length; ++j )
         flatDescriptors.push( descriptor[ j ] );
-    }
   }
   let flatDescriptorsMinMax = this.getMinMaxDescriptorsValues( flatDescriptors );
-
   for ( let i = 0; i < flatDescriptors.length; ++i )
   {
-    let weight = this.computeWeightForLight( flatDescriptors[ i ], flatDescriptorsMinMax, 50, 50, 0 );
+    let weight = this.computeWeightForLight( flatDescriptors[ i ], flatDescriptorsMinMax, 50, 50, 0, 1 );
     if ( weight > maxVal )
     {
       maxVal = weight;
@@ -1245,10 +1329,11 @@ StackEngine.prototype.findRegistrationReferenceImage = function( descriptors )
     }
   }
 
+  // check in case light images are all the same
   return filePath;
 }
 
-StackEngine.prototype.computeWeightForLight = function( descriptor, descriptorMinMax, FWHMWeight, eccentricityWeight, SNRWeight )
+StackEngine.prototype.computeWeightForLight = function( descriptor, descriptorMinMax, FWHMWeight, eccentricityWeight, SNRWeight, pedestal )
 {
   let FWHM = descriptor.FWHM;
   let FWHM_min = descriptorMinMax.FWHM_min;
@@ -1263,18 +1348,18 @@ StackEngine.prototype.computeWeightForLight = function( descriptor, descriptorMi
   let noise_min = descriptorMinMax.noise_min;
   let noise_max = descriptorMinMax.noise_max;
 
-  let a = 1 - ( FWHM - FWHM_min ) / ( FWHM_max - FWHM_min );
-  let b = 1 - ( eccentricity - eccentricity_min ) / ( eccentricity_max - eccentricity_min );
-  let c = ( SNR - SNR_min ) / ( SNR_max - SNR_min );
+  let a = FWHM_max - FWHM_min == 0 ? 0 : 1 - ( FWHM - FWHM_min ) / ( FWHM_max - FWHM_min );
+  let b = eccentricity_max - eccentricity_min == 0 ? 0 : 1 - ( eccentricity - eccentricity_min ) / ( eccentricity_max - eccentricity_min );
+  let c = SNR_max - SNR_min == 0 ? 0 : ( SNR - SNR_min ) / ( SNR_max - SNR_min );
   // let c = 1 - (noise - noise_min) / (noise_max - noise_min);
   // let weight = this.pedestal + (FWHMWeight * a + eccentricityWeight * b + SNRWeight * c) / 100 * (100 - this.pedestal);
-  let weight = this.pedestal + a * FWHMWeight + b * eccentricityWeight + c * SNRWeight;
+  let weight = pedestal + a * FWHMWeight + b * eccentricityWeight + c * SNRWeight;
   console.noteln( 'Weights of image: ', descriptor.filePath );
   console.noteln( "-----------------------" );
-  console.noteln( 'FWHM         : ', format( "%.02f", a * 100 ), " %" );
-  console.noteln( 'eccentricity : ', format( "%.02f", b * 100 ), " %" );
-  console.noteln( 'SNR          : ', format( "%.02f", c * 100 ), " %" );
-  console.noteln( 'Image weight : ', format( "%.02f", weight ) );
+  console.noteln( 'FWHM         : ', isNaN( a ) ? '-' : format( "%.02f", a * 100 ), ' %' );
+  console.noteln( 'eccentricity : ', isNaN( b ) ? '-' : format( "%.02f", b * 100 ), ' %' );
+  console.noteln( 'SNR          : ', isNaN( c ) ? '-' : format( "%.02f", c * 100 ), ' %' );
+  console.noteln( 'Image weight : ', isNaN( weight ) ? '-' : format( "%.02f", weight ) );
   console.noteln( "-----------------------" );
   console.flush();
   return weight;
@@ -1287,6 +1372,7 @@ StackEngine.prototype.writeWeightsWithDescriptors = function( imagesDescriptors,
   console.noteln( "* Begin computation of weights for images" );
   console.noteln( "************************************************************" );
   console.flush();
+
   // compute weights for all groups
   for ( let i = 0; i < imagesDescriptors.length; ++i )
   {
@@ -1303,18 +1389,23 @@ StackEngine.prototype.writeWeightsWithDescriptors = function( imagesDescriptors,
           console.warningln( "Unable to open file to write weight, " + descriptors[ j ].filePath );
           continue;
         }
-        let weight = this.computeWeightForLight( descriptor, descriptorMinMax, this.FWHMWeight, this.eccentricityWeight, this.SNRWeight );
-        imageWindow.keywords = imageWindow.keywords.filter( keyword =>
+        let weight = this.computeWeightForLight( descriptor, descriptorMinMax, this.FWHMWeight, this.eccentricityWeight, this.SNRWeight, this.pedestal );
+        if ( !isNaN( weight ) )
         {
-          return keyword.name !== "SWWEIGHT";
-        } ).concat(
-          new FITSKeyword(
-            "SWWEIGHT",
-            format( "%.3e", weight ).replace( "e", "E" ),
-            "Subframe weight"
-          ) );
-        imageWindow.saveAs( descriptor.filePath, false, false, false, false );
-        imageWindow.forceClose();
+          imageWindow.keywords = imageWindow.keywords.filter( keyword =>
+          {
+            return keyword.name !== "SWWEIGHT";
+          } ).concat(
+            new FITSKeyword(
+              "SWWEIGHT",
+              format( "%.3e", weight ).replace( "e", "E" ),
+              "Subframe weight"
+            ) );
+          imageWindow.saveAs( descriptor.filePath, false, false, false, false );
+          imageWindow.forceClose();
+        }
+        else
+          console.warningln( 'Unable to save weight for image ', descriptor.filePath )
       }
     }
   }
@@ -1351,7 +1442,6 @@ StackEngine.prototype.computeDescriptors = function( images )
     if ( imageWindow.mainView.image.colorSpace != ColorSpace_Gray )
     {
       var convertToGrayscale = new ConvertToGrayscale;
-      //console.abortEnabled = false;
       convertToGrayscale.executeOn( imageWindow.mainView, false );
       console.abortEnabled = true;
     }
@@ -1425,7 +1515,7 @@ StackEngine.prototype.doFlat = function()
       if ( outputData == null )
         throw new Error( "Error calibrating flat frames." );
 
-      var tmpGroup = new FrameGroup( ImageType.FLAT, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, 0, null, false );
+      var tmpGroup = new FrameGroup( ImageType.FLAT, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, this.frameGroups[ i ].exposureTime, null, false );
       for ( var c = 0; c < outputData.length; ++c )
       {
         var filePath = outputData[ c ][ 0 ]; // outputData.outputImage
@@ -1441,8 +1531,9 @@ StackEngine.prototype.doFlat = function()
       if ( masterFlatPath.isEmpty() )
         throw new Error( "Error integrating flat frames." );
       this.frameGroups[ i ].masterFrame = true;
-      this.frameGroups[ i ].fileItems.unshift( new FileItem( masterFlatPath, 0 ) );
       this.useAsMaster[ ImageType.FLAT ] = true;
+      // this.frameGroups[ i ].fileItems.unshift( new FileItem( masterFlatPath, 0 ) );
+      this.addFile( masterFlatPath, ImageType.FLAT );
 
       processEvents();
       gc();
@@ -1464,10 +1555,7 @@ StackEngine.prototype.doLight = function()
    * 
    *          3. registration/integration will continue for all groups
    */
-  // for ( var g = 0; g < groupIndex.length; ++g )
-  // {
-  //    var i = groupIndex[g];
-  //    var registerFrames = new Array;
+
   var processedImageGroups = new Array;
   var imagesDescriptors = new Array;
   var imagesDescriptorsMinMax = new Array;
@@ -1499,6 +1587,8 @@ StackEngine.prototype.doLight = function()
           "************************************************************" );
         console.noteln( "* Begin cosmetic correction of light frames" );
         console.noteln( "************************************************************" );
+
+        this.frameGroups[ i ].log();
 
         var CC = ProcessInstance.fromIcon( this.cosmeticCorrectionTemplateId );
         if ( CC == null )
@@ -1532,7 +1622,7 @@ StackEngine.prototype.doLight = function()
             "_c_cc" + ".xisf";
           if ( File.exists( ccFilePath ) )
           {
-            if ( filePath == this.referenceImage )
+            if ( filePath == actualReferenceImage )
               actualReferenceImage = ccFilePath;
             images.push( ccFilePath );
           }
@@ -1554,6 +1644,8 @@ StackEngine.prototype.doLight = function()
           "************************************************************" );
         console.noteln( "* Begin demosaicing of light frames" );
         console.noteln( "************************************************************" );
+
+        this.frameGroups[ i ].log();
 
         var DB = new Debayer;
 
@@ -1599,8 +1691,10 @@ StackEngine.prototype.doLight = function()
       var processedImageGroup = {};
       processedImageGroup.filter = this.frameGroups[ i ].filter;
       processedImageGroup.binning = this.frameGroups[ i ].binning;
+      processedImageGroup.exposureTime = this.frameGroups[ i ].exposureTime;
+      processedImageGroup.exposureTimes = this.frameGroups[ i ].exposureTimes;
       processedImageGroup.images = new Array;
-      for ( let ii = 0; ii < images.length; ++ii )
+      for ( var ii = 0; ii < images.length; ++ii )
         processedImageGroup.images.push( images[ ii ] );
       processedImageGroups.push( processedImageGroup );
 
@@ -1623,7 +1717,7 @@ StackEngine.prototype.doLight = function()
 
     actualReferenceImage = this.findRegistrationReferenceImage( imagesDescriptors );
 
-    console.noteln("<end><cbr><br>");
+    console.noteln( "<end><cbr><br>" );
     console.noteln( "Best reference frame for registration: " + actualReferenceImage );
     console.noteln( "<end><cbr><br>",
       "************************************************************" );
@@ -1637,45 +1731,24 @@ StackEngine.prototype.doLight = function()
     this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
   }
 
-  // var groupIndex = new Array;
-  // if ( actualReferenceImage === null )
-  // {
-  //   for ( var i = 0; i < this.frameGroups.length; ++i )
-  //     if ( this.frameGroups[ i ].imageType === ImageType.LIGHT )
-  //     {
-  //       groupIndex.push( i );
-  //     }
-  // }
-  // else
-  // {
-  //   var indexOfGroupWithReferenceImage = -1;
-  //   for ( var i = 0; i < this.frameGroups.length && indexOfGroupWithReferenceImage < 0; ++i )
-  //     for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
-  //       if ( this.frameGroups[ i ].fileItems[ j ].filePath == this.referenceImage )
-  //       {
-  //         indexOfGroupWithReferenceImage = i;
-  //         groupIndex.push( i );
-  //         break;
-  //       }
-  //   for ( var i = 0; i < this.frameGroups.length; ++i )
-  //     if ( i != indexOfGroupWithReferenceImage && this.frameGroups[ i ].imageType === ImageType.LIGHT )
-  //       groupIndex.push( i );
-  // }
-
   if ( !this.calibrateOnly )
   {
     for ( var p = 0; p < processedImageGroups.length; ++p )
     {
-      // var i = groupIndex[ g ];
-      filter = processedImageGroups[ p ].filter;
-      binning = processedImageGroups[ p ].binning;
+      let filter = processedImageGroups[ p ].filter;
+      let binning = processedImageGroups[ p ].binning;
+      let exposureTime = processedImageGroups[ p ].exposureTime;
       images = processedImageGroups[ p ].images;
+      let preRegistrationImagesCount = images.length;
+
       console.noteln( "<end><cbr><br>",
         "************************************************************" );
       console.noteln( "* Begin registration of light frames" );
       console.noteln( "************************************************************" );
       console.flush();
 
+      console.noteln( 'ActualReferenceImage: ', actualReferenceImage );
+      console.noteln( 'Registering ', preRegistrationImagesCount, ' light images' );
       var SA = new StarAlignment;
 
       var registerDirectory = this.outputDirectory + "/registered";
@@ -1722,8 +1795,18 @@ StackEngine.prototype.doLight = function()
           else
             console.warningln( "** Warning: File does not exist after image registration: " + filePath );
       }
+
       if ( images.length < 1 )
-        throw new Error( "All registered light frame files have been removed or cannot be accessed." );
+        console.warningln( "All registered light frame files have been removed or cannot be accessed." );
+      else if ( images.length < 3 )
+      {
+        let failed = preRegistrationImagesCount - images.length;
+        throw new Error( "Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, " provided. A minimum of 3 images must be succesfully registered." );
+      }
+      else if ( preRegistrationImagesCount - images.length > 0 )
+      {
+        console.warningln( "** Warning: failed to register " + ( preRegistrationImagesCount - images.length ) + " images out of " + preRegistrationImagesCount );
+      }
 
       console.noteln( "<end><cbr><br>",
         "************************************************************" );
@@ -1743,7 +1826,7 @@ StackEngine.prototype.doLight = function()
 
       if ( this.integrate )
       {
-        var tmpGroup = new FrameGroup( ImageType.LIGHT, filter, binning, 0, null, false );
+        var tmpGroup = new FrameGroup( ImageType.LIGHT, filter, binning, exposureTime, null, false );
         for ( var c = 0; c < images.length; ++c )
         {
           var filePath = images[ c ]; // outputData.outputImage
@@ -1760,10 +1843,10 @@ StackEngine.prototype.doLight = function()
           throw new Error( "Error integrating light frames." );
       }
     }
-
-    processEvents();
-    gc();
   }
+
+  processEvents();
+  gc();
 };
 
 StackEngine.prototype.doIntegrate = function( frameGroup )
@@ -1780,6 +1863,16 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   console.noteln( "* Begin integration of ", StackEngine.imageTypeToString( imageType ), " frames" );
   console.noteln( "************************************************************" );
 
+  frameGroup.log();
+
+  let selectedRejection = this.rejection[ imageType ] <= ImageIntegration.prototype.LinearFit ? this.rejection[ imageType ] : frameGroup.bestRejectionMethod();
+
+  console.noteln( 'Rejection method ', RejectionToString( this.rejection[ imageType ] ) );
+
+  if ( this.rejection[ imageType ] > ImageIntegration.prototype.LinearFit )
+  {
+    console.noteln( 'Rejection method auto-selected: ', RejectionToString( selectedRejection ) );
+  }
   var II = new ImageIntegration;
 
   II.inputHints = this.inputHints();
@@ -1787,7 +1880,7 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   II.stackSizeMB = 1024;
   II.images = frameSet.enableTargetFrames( 2 );
   II.combination = this.combination[ imageType ];
-  II.rejection = this.rejection[ imageType ];
+  II.rejection = selectedRejection;
   II.generateRejectionMaps = this.generateRejectionMaps;
   II.minMaxLow = this.minMaxLow[ imageType ];
   II.minMaxHigh = this.minMaxHigh[ imageType ];
@@ -1874,7 +1967,7 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   if ( !frameGroup.filter.isEmpty() )
   {
     // Make sure the filter postfix includes only valid file name characters.
-    postfix += "-FILTER_" + frameGroup.cleanFilterName();
+    postfix += "-FILTER_" + frameGroup.filter.cleanFilterName();
     keywords.push( new FITSKeyword( "FILTER", frameGroup.filter, "Filter used when taking image" ) );
   }
 
@@ -2000,154 +2093,209 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
 {
   var imageType = frameGroup.imageType;
 
-  var frameset = new Array; // frames to calibrate
-  var a_exp = new Array; // all EXPTIME values
   var referenceImageIndex = -1; // index of registration reference frame
-
-  for ( var i = 0; i < frameGroup.fileItems.length; ++i )
-  {
-    var filePath = frameGroup.fileItems[ i ].filePath;
-    if ( filePath == this.referenceImage )
-      referenceImageIndex = i;
-    frameset.push( filePath );
-    a_exp.push( frameGroup.fileItems[ i ].exposureTime );
-  }
-
-  var exptime = 0;
-  a_exp = a_exp.removeDuplicateElements();
-  if ( a_exp.length > 0 )
-    exptime = ( a_exp.length > 1 ) ? Math.maxElem( a_exp ) : a_exp[ 0 ];
-
-  var binning = frameGroup.binning;
-  var filter = frameGroup.filter;
-
-  let exactDarkExposureTime = imageType == ImageType.FLAT && this.flatDarksOnly;
-  let masterDarkPath = this.getMasterDarkFrame( binning, exptime, exactDarkExposureTime );
-
-  if ( exactDarkExposureTime )
-    if ( masterDarkPath.isEmpty() )
-    {
-      // Return the frame group file set since calibration has been skipped but
-      // the process should continue with the uncalibrated frames.
-      let retVal = [];
-      for ( let i = 0; i < this.frameGroups.length; ++i )
-        if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
-          if ( this.frameGroups[ i ].binning == binning && this.frameGroups[ i ].filter == filter )
-            for ( let j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
-              retVal[ j ] = [ this.frameGroups[ i ].fileItems[ j ].filePath ];
-
-      console.noteln( "<end><cbr><br>* Calibration of flat frames skipped -- no flat darks found." );
-      return retVal;
-    }
 
   console.noteln( "<end><cbr><br>",
     "************************************************************" );
   console.noteln( "* Begin calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
   console.noteln( "************************************************************" );
 
-  var IC = new ImageCalibration;
+  frameGroup.log();
 
-  IC.inputHints = this.inputHints();
-  IC.outputHints = this.outputHints();
-  IC.targetFrames = frameset.enableTargetFrames( 2 );
-  IC.masterBiasEnabled = false;
-  IC.masterDarkEnabled = false;
-  IC.masterFlatEnabled = false;
-  IC.calibrateBias = true; // relevant if we define overscan areas
-  IC.calibrateDark = true; // assume the master dark includes the bias signal
-  IC.calibrateFlat = false; // assume we have calibrated each individual flat frame
-  IC.optimizeDarks = this.optimizeDarks;
-  IC.darkCFADetectionMode = this.cfaImages ? ImageCalibration.prototype.ForceCFA : ImageCalibration.prototype.DetectCFA;
-  IC.darkOptimizationThreshold = this.darkOptimizationThreshold; // ### deprecated - retained for compatibility
-  IC.darkOptimizationLow = this.darkOptimizationLow;
-  IC.darkOptimizationWindow = this.darkOptimizationWindow;
-  IC.outputExtension = ".xisf";
-  IC.outputPrefix = "";
-  IC.outputPostfix = "_c";
-  IC.evaluateNoise = this.evaluateNoise && imageType == ImageType.LIGHT && !this.cfaImages; // for CFAs, evaluate noise after debayer
-  IC.outputSampleFormat = ImageCalibration.prototype.f32;
-  IC.overwriteExistingFiles = true;
-  IC.onError = ImageCalibration.prototype.Abort;
+  // Despite the current integration grouping  wihch can group frames with different durations,
+  // the calibration should proceed as folows:
+  // 1. grouping images with same duration
+  // 2. find the proper bias / dark / flat
+  // 3. calibrate
+  var framesetByDuration = {}
+  var exposures = [];
 
-  if ( this.overscan.enabled )
+  // subgroup files by duration
+  for ( var i = 0; i < frameGroup.fileItems.length; ++i )
   {
-    IC.overscanEnabled = true;
-    IC.overscanImageX0 = this.overscan.imageRect.x0;
-    IC.overscanImageY0 = this.overscan.imageRect.y0;
-    IC.overscanImageX1 = this.overscan.imageRect.x1;
-    IC.overscanImageY1 = this.overscan.imageRect.y1;
-    IC.overscanRegions = [ // enabled, sourceX0, sourceY0, sourceX1, sourceY1, targetX0, targetY0, targetX1, targetY1
-      [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
-      [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
-      [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
-      [ false, 0, 0, 0, 0, 0, 0, 0, 0 ]
-    ];
-    for ( let i = 0; i < 4; ++i )
-      if ( this.overscan.overscan[ i ].enabled )
-      {
-        IC.overscanRegions[ i ][ 0 ] = true;
-        IC.overscanRegions[ i ][ 1 ] = this.overscan.overscan[ i ].sourceRect.x0;
-        IC.overscanRegions[ i ][ 2 ] = this.overscan.overscan[ i ].sourceRect.y0;
-        IC.overscanRegions[ i ][ 3 ] = this.overscan.overscan[ i ].sourceRect.x1;
-        IC.overscanRegions[ i ][ 4 ] = this.overscan.overscan[ i ].sourceRect.y1;
-        IC.overscanRegions[ i ][ 5 ] = this.overscan.overscan[ i ].targetRect.x0;
-        IC.overscanRegions[ i ][ 6 ] = this.overscan.overscan[ i ].targetRect.y0;
-        IC.overscanRegions[ i ][ 7 ] = this.overscan.overscan[ i ].targetRect.x1;
-        IC.overscanRegions[ i ][ 8 ] = this.overscan.overscan[ i ].targetRect.y1;
-      }
+    var filePath = frameGroup.fileItems[ i ].filePath;
+    let expTime = frameGroup.fileItems[ i ].exposureTime;
+    if ( !framesetByDuration.hasOwnProperty( expTime ) )
+    {
+      framesetByDuration[ expTime ] = [];
+      exposures.push( expTime );
+    }
+    framesetByDuration[ expTime ].push( filePath );
   }
 
-  for ( let i = 0; i < this.frameGroups.length; ++i )
-    if ( this.frameGroups[ i ].masterFrame )
-      if ( this.frameGroups[ i ].imageType == ImageType.BIAS )
-        if ( this.frameGroups[ i ].binning == binning )
-        {
-          IC.masterBiasEnabled = true;
-          IC.masterBiasPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
-        }
+  var calibratedImages = [];
 
-  IC.masterDarkPath = masterDarkPath;
-  IC.masterDarkEnabled = !IC.masterDarkPath.isEmpty();
-
-  if ( imageType == ImageType.FLAT )
-    IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/flat" );
-  else if ( imageType == ImageType.LIGHT )
+  // process all subgroups
+  for ( var g = 0; g < exposures.length; g++ )
   {
-    // Get master flat with matching parameters
-    for ( var i = 0; i < this.frameGroups.length; ++i )
+
+    // get the subgroup data
+    let exptime = exposures[ g ];
+    var frameset = framesetByDuration[ exptime ]; // frames to calibrate
+
+    var binning = frameGroup.binning;
+    var filter = frameGroup.filter;
+
+    console.writeln( 'Calibrate ', StackEngine.imageTypeToString( imageType ), ' frames with duration ', format( "%.02f", exptime ), ' for filter ', filter.length > 0 ? filter : ' <not specified>' );
+
+    var masterBiasEnabled = false;
+    var masterBiasPath = "";
+
+    // store reference frame index if reference is in the frameset
+    var referenceImageIndex = -1;
+    for ( var j = 0; j < frameset.length; ++j )
+    {
+      if ( frameset[ j ] == this.referenceImage )
+        referenceImageIndex = j;
+    }
+
+    // search the matching master bias
+    for ( let i = 0; i < this.frameGroups.length; ++i )
       if ( this.frameGroups[ i ].masterFrame )
-        if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
-          if ( this.frameGroups[ i ].binning == binning && this.frameGroups[ i ].filter == filter )
+        if ( this.frameGroups[ i ].imageType == ImageType.BIAS )
+          if ( this.frameGroups[ i ].binning == binning )
           {
-            IC.masterFlatEnabled = true;
-            IC.masterFlatPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
-            break;
+            masterBiasEnabled = true;
+            masterBiasPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
           }
-    IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/light" );
+
+    // search the matching master dark
+    let exactDarkExposureTime = ( imageType == ImageType.FLAT ) && this.flatDarksOnly;
+    let masterDarkPath = this.getMasterDarkFrame( binning, exptime, exactDarkExposureTime );
+
+    // skip flat calibration if no masterBias and no masterDark have been found for FLATS
+    // ps: flats are always grouped by duration so the subgroup always one and correspond to
+    //     the parent group
+    if ( exactDarkExposureTime )
+    {
+      if ( masterDarkPath.isEmpty() && !masterBiasEnabled )
+      {
+        // Return the frame group file set since calibration has been skipped but
+        // the process should continue with the uncalibrated frames.
+        let retVal = [];
+        for ( let i = 0; i < this.frameGroups.length; ++i )
+          if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
+            if ( this.frameGroups[ i ].binning == binning && this.frameGroups[ i ].filter == filter )
+              for ( let j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
+                retVal[ j ] = [ this.frameGroups[ i ].fileItems[ j ].filePath ];
+
+        console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- neither master bias provided nor master dark matching the exposure has been found" );
+        console.noteln( "<end><cbr><br>",
+          "************************************************************" );
+        console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
+        console.noteln( "************************************************************" );
+        return retVal;
+      }
+      else if ( masterBiasEnabled )
+      {
+        console.noteln( "<end><cbr><br>* " + StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
+      }
+    }
+
+    var IC = new ImageCalibration;
+
+    IC.inputHints = this.inputHints();
+    IC.outputHints = this.outputHints();
+    IC.targetFrames = frameset.enableTargetFrames( 2 );
+    IC.masterBiasEnabled = false;
+    IC.masterDarkEnabled = false;
+    IC.masterFlatEnabled = false;
+    IC.calibrateBias = true; // relevant if we define overscan areas
+    IC.calibrateDark = true; // assume the master dark includes the bias signal
+    IC.calibrateFlat = false; // assume we have calibrated each individual flat frame
+    IC.optimizeDarks = this.optimizeDarks;
+    IC.darkCFADetectionMode = this.cfaImages ? ImageCalibration.prototype.ForceCFA : ImageCalibration.prototype.DetectCFA;
+    IC.darkOptimizationThreshold = this.darkOptimizationThreshold; // ### deprecated - retained for compatibility
+    IC.darkOptimizationLow = this.darkOptimizationLow;
+    IC.darkOptimizationWindow = this.darkOptimizationWindow;
+    IC.outputExtension = ".xisf";
+    IC.outputPrefix = "";
+    IC.outputPostfix = "_c";
+    IC.evaluateNoise = this.evaluateNoise && imageType == ImageType.LIGHT && !this.cfaImages; // for CFAs, evaluate noise after debayer
+    IC.outputSampleFormat = ImageCalibration.prototype.f32;
+    IC.overwriteExistingFiles = true;
+    IC.onError = ImageCalibration.prototype.Abort;
+
+    if ( this.overscan.enabled )
+    {
+      IC.overscanEnabled = true;
+      IC.overscanImageX0 = this.overscan.imageRect.x0;
+      IC.overscanImageY0 = this.overscan.imageRect.y0;
+      IC.overscanImageX1 = this.overscan.imageRect.x1;
+      IC.overscanImageY1 = this.overscan.imageRect.y1;
+      IC.overscanRegions = [ // enabled, sourceX0, sourceY0, sourceX1, sourceY1, targetX0, targetY0, targetX1, targetY1
+        [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
+        [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
+        [ false, 0, 0, 0, 0, 0, 0, 0, 0 ],
+        [ false, 0, 0, 0, 0, 0, 0, 0, 0 ]
+      ];
+      for ( let i = 0; i < 4; ++i )
+        if ( this.overscan.overscan[ i ].enabled )
+        {
+          IC.overscanRegions[ i ][ 0 ] = true;
+          IC.overscanRegions[ i ][ 1 ] = this.overscan.overscan[ i ].sourceRect.x0;
+          IC.overscanRegions[ i ][ 2 ] = this.overscan.overscan[ i ].sourceRect.y0;
+          IC.overscanRegions[ i ][ 3 ] = this.overscan.overscan[ i ].sourceRect.x1;
+          IC.overscanRegions[ i ][ 4 ] = this.overscan.overscan[ i ].sourceRect.y1;
+          IC.overscanRegions[ i ][ 5 ] = this.overscan.overscan[ i ].targetRect.x0;
+          IC.overscanRegions[ i ][ 6 ] = this.overscan.overscan[ i ].targetRect.y0;
+          IC.overscanRegions[ i ][ 7 ] = this.overscan.overscan[ i ].targetRect.x1;
+          IC.overscanRegions[ i ][ 8 ] = this.overscan.overscan[ i ].targetRect.y1;
+        }
+    }
+
+    IC.masterBiasEnabled = masterBiasEnabled;
+    IC.masterBiasPath = masterBiasPath
+
+    IC.masterDarkEnabled = !masterDarkPath.isEmpty();
+    IC.masterDarkPath = masterDarkPath;
+
+    if ( imageType == ImageType.FLAT )
+      IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/flat" );
+    else if ( imageType == ImageType.LIGHT )
+    {
+      // search the matching master flat
+      for ( var i = 0; i < this.frameGroups.length; ++i )
+        if ( this.frameGroups[ i ].masterFrame )
+          if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
+            if ( this.frameGroups[ i ].binning == binning && this.frameGroups[ i ].filter == filter )
+            {
+              IC.masterFlatEnabled = true;
+              IC.masterFlatPath = this.frameGroups[ i ].fileItems[ 0 ].filePath;
+              break;
+            }
+      IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/light" );
+    }
+
+    if ( IC.masterBiasEnabled )
+      console.noteln( "* Master bias: " + IC.masterBiasPath );
+    if ( IC.masterDarkEnabled )
+      console.noteln( "* Master dark: " + IC.masterDarkPath );
+    if ( IC.masterFlatEnabled )
+      console.noteln( "* Master flat: " + IC.masterFlatPath );
+
+    var ok = IC.executeGlobal();
+
+    if ( ok )
+    {
+      if ( referenceImageIndex >= 0 )
+        this.actualReferenceImage = IC.outputData[ referenceImageIndex ][ 0 ]; // outputData.filePath
+      for ( var j = 0; j < IC.outputData.length; ++j )
+      {
+        calibratedImages.push( IC.outputData[ j ] );
+      }
+    }
+
+    processEvents();
+    gc();
   }
-
-  if ( IC.masterBiasEnabled )
-    console.noteln( "* Master bias: " + IC.masterBiasPath );
-  if ( IC.masterDarkEnabled )
-    console.noteln( "* Master dark: " + IC.masterDarkPath );
-  if ( IC.masterFlatEnabled )
-    console.noteln( "* Master flat: " + IC.masterFlatPath );
-
-  var ok = IC.executeGlobal();
 
   console.noteln( "<end><cbr><br>",
     "************************************************************" );
   console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
   console.noteln( "************************************************************" );
 
-  if ( ok )
-  {
-    if ( referenceImageIndex >= 0 )
-      this.actualReferenceImage = IC.outputData[ referenceImageIndex ][ 0 ]; // outputData.filePath
-    return IC.outputData;
-  }
-
-  return null;
+  return calibratedImages;
 };
 
 StackEngine.prototype.updateMasterFrames = function( imageType )
@@ -2171,6 +2319,20 @@ StackEngine.prototype.purgeRemovedElements = function()
         this.frameGroups.splice( i, 1 );
     }
 };
+
+StackEngine.prototype.framesGroupsToStringData = function()
+{
+  // save files structure
+  return JSON.stringify( this.frameGroups );
+}
+
+StackEngine.prototype.framesGroupsFromStringData = function( data )
+{
+  let groupsData = JSON.parse( data );
+  for ( var i = 0; i < groupsData.length; ++i )
+    for ( var j = 0; j < groupsData[ i ].fileItems.length; ++j )
+      this.addFile( groupsData[ i ].fileItems[ j ].filePath, groupsData[ i ].imageType );
+}
 
 StackEngine.prototype.loadSettings = function()
 {
@@ -2275,6 +2437,8 @@ StackEngine.prototype.loadSettings = function()
     this.flatDarksOnly = o;
   if ( ( o = load( "calibrateOnly", DataType_Boolean ) ) != null )
     this.calibrateOnly = o;
+  if ( ( o = load( "groupLightsOfDifferentExposure", DataType_Boolean ) ) != null )
+    this.groupLightsOfDifferentExposure = o;
   if ( ( o = load( "generateDrizzleData", DataType_Boolean ) ) != null )
     this.generateDrizzleData = o;
   if ( ( o = load( "bayerPattern", DataType_Int32 ) ) != null )
@@ -2313,6 +2477,8 @@ StackEngine.prototype.loadSettings = function()
     this.useTriangleSimilarity = o;
   if ( ( o = load( "integrate", DataType_Boolean ) ) != null )
     this.integrate = o;
+  // if ( ( o = load( "frameGroups", DataType_String ) ) != null )
+  //   this.framesGroupsFromStringData( o );
 };
 
 StackEngine.prototype.saveSettings = function()
@@ -2375,6 +2541,7 @@ StackEngine.prototype.saveSettings = function()
   save( "flatsLargeScaleRejectionGrowth", DataType_Int32, this.flatsLargeScaleRejectionGrowth );
   save( "flatDarksOnly", DataType_Boolean, this.flatDarksOnly );
   save( "calibrateOnly", DataType_Boolean, this.calibrateOnly );
+  save( "groupLightsOfDifferentExposure", DataType_Boolean, this.groupLightsOfDifferentExposure );
   save( "generateDrizzleData", DataType_Boolean, this.generateDrizzleData );
   save( "bayerPattern", DataType_Int32, this.bayerPattern );
   save( "debayerMethod", DataType_Int32, this.debayerMethod );
@@ -2393,6 +2560,8 @@ StackEngine.prototype.saveSettings = function()
   save( "noiseReductionFilterRadius", DataType_Int32, this.noiseReductionFilterRadius );
   save( "useTriangleSimilarity", DataType_Boolean, this.useTriangleSimilarity );
   save( "integrate", DataType_Boolean, this.integrate );
+
+  // save( "frameGroups", DataType_String, this.framesGroupsToStringData() );
 };
 
 StackEngine.prototype.setDefaultParameters = function()
@@ -2443,6 +2612,7 @@ StackEngine.prototype.setDefaultParameters = function()
   this.flatDarksOnly = DEFAULT_FLAT_DARKS_ONLY;
 
   this.calibrateOnly = DEFAULT_CALIBRATE_ONLY;
+  this.groupLightsOfDifferentExposure = DEFAULT_GROUP_LIGHTS_WITH_DIFFERENT_EXPOSURE;
   this.generateDrizzleData = DEFAULT_GENERATE_DRIZZLE_DATA;
 
   this.cosmeticCorrection = DEFAULT_COSMETIC_CORRECTION;
@@ -2470,14 +2640,14 @@ StackEngine.prototype.setDefaultParameters = function()
   this.referenceImage = "";
 
   this.integrate = DEFAULT_INTEGRATE;
+
+  this.frameGroups = DEFAULT_FRAME_GROUPS;
 };
 
 StackEngine.prototype.importParameters = function()
 {
   this.setDefaultParameters();
   this.loadSettings();
-
-  this.frameGroups.length = 0;
 
   if ( Parameters.has( "outputDirectory" ) )
     this.outputDirectory = Parameters.getString( "outputDirectory" );
@@ -2613,6 +2783,13 @@ StackEngine.prototype.importParameters = function()
   if ( Parameters.has( "calibrateOnly" ) )
     this.calibrateOnly = Parameters.getBoolean( "calibrateOnly" );
 
+  if ( Parameters.has( "groupLightsOfDifferentExposure" ) )
+  {
+    console.writeln( 'groupLightsOfDifferentExposure found' );
+    this.groupLightsOfDifferentExposure = Parameters.getBoolean( "groupLightsOfDifferentExposure" );
+    console.writeln( 'groupLightsOfDifferentExposure loaded: ', this.groupLightsOfDifferentExposure );
+  }
+
   if ( Parameters.has( "generateDrizzleData" ) )
     this.generateDrizzleData = Parameters.getBoolean( "generateDrizzleData" );
 
@@ -2676,46 +2853,49 @@ StackEngine.prototype.importParameters = function()
   if ( Parameters.has( "integrate" ) )
     this.integrate = Parameters.getBoolean( "integrate" );
 
-  if ( this.exportCalibrationFiles )
-    for ( var i = 0;; ++i )
-    {
-      if ( !Parameters.hasIndexed( "group_imageType", i ) ||
-        !Parameters.hasIndexed( "group_filter", i ) ||
-        !Parameters.hasIndexed( "group_binning", i ) ||
-        !Parameters.hasIndexed( "group_exposureTime", i ) ||
-        !Parameters.hasIndexed( "group_masterFrame", i ) ||
-        !Parameters.hasIndexed( "group_enabled", i ) )
-      {
-        break;
-      }
+  // if ( Parameters.has( "frameGroups" ) )
+  //   this.framesGroupsFromStringData( Parameters.getString( "frameGroups" ) );
 
-      var group = new FrameGroup( Parameters.getIntegerIndexed( "group_imageType", i ),
-        Parameters.getStringIndexed( "group_filter", i ),
-        Parameters.getIntegerIndexed( "group_binning", i ),
-        Parameters.getRealIndexed( "group_exposureTime", i ),
-        null,
-        Parameters.getBooleanIndexed( "group_masterFrame", i ) );
-      group.enabled = Parameters.getBooleanIndexed( "group_enabled", i );
+  // if ( this.exportCalibrationFiles )
+  //   for ( var i = 0;; ++i )
+  //   {
+  //     if ( !Parameters.hasIndexed( "group_imageType", i ) ||
+  //       !Parameters.hasIndexed( "group_filter", i ) ||
+  //       !Parameters.hasIndexed( "group_binning", i ) ||
+  //       !Parameters.hasIndexed( "group_exposureTime", i ) ||
+  //       !Parameters.hasIndexed( "group_masterFrame", i ) ||
+  //       !Parameters.hasIndexed( "group_enabled", i ) )
+  //     {
+  //       break;
+  //     }
 
-      var groupIndexId = Parameters.indexedId( "group_frames", i );
-      for ( var j = 0;; ++j )
-      {
-        if ( !Parameters.hasIndexed( groupIndexId + "_filePath", j ) ||
-          !Parameters.hasIndexed( groupIndexId + "_exposureTime", j ) ||
-          !Parameters.hasIndexed( groupIndexId + "_enabled", j ) )
-        {
-          break;
-        }
+  //     var group = new FrameGroup( Parameters.getIntegerIndexed( "group_imageType", i ),
+  //       Parameters.getStringIndexed( "group_filter", i ),
+  //       Parameters.getIntegerIndexed( "group_binning", i ),
+  //       Parameters.getRealIndexed( "group_exposureTime", i ),
+  //       null,
+  //       Parameters.getBooleanIndexed( "group_masterFrame", i ) );
+  //     group.enabled = Parameters.getBooleanIndexed( "group_enabled", i );
 
-        var item = new FileItem( Parameters.getStringIndexed( groupIndexId + "_filePath", j ),
-          Parameters.getRealIndexed( groupIndexId + "_exposureTime", j ) );
-        item.enabled = Parameters.getBooleanIndexed( groupIndexId + "_enabled", j );
-        group.fileItems.push( item );
-      }
+  //     var groupIndexId = Parameters.indexedId( "group_frames", i );
+  //     for ( var j = 0;; ++j )
+  //     {
+  //       if ( !Parameters.hasIndexed( groupIndexId + "_filePath", j ) ||
+  //         !Parameters.hasIndexed( groupIndexId + "_exposureTime", j ) ||
+  //         !Parameters.hasIndexed( groupIndexId + "_enabled", j ) )
+  //       {
+  //         break;
+  //       }
 
-      if ( group.fileItems.length > 0 ) // don't add empy frame groups
-        this.frameGroups.push( group );
-    }
+  //       var item = new FileItem( Parameters.getStringIndexed( groupIndexId + "_filePath", j ),
+  //         Parameters.getRealIndexed( groupIndexId + "_exposureTime", j ) );
+  //       item.enabled = Parameters.getBooleanIndexed( groupIndexId + "_enabled", j );
+  //       group.fileItems.push( item );
+  //     }
+
+  //     if ( group.fileItems.length > 0 ) // don't add empy frame groups
+  //       this.frameGroups.push( group );
+  //   }
 };
 
 StackEngine.prototype.exportParameters = function()
@@ -2781,6 +2961,7 @@ StackEngine.prototype.exportParameters = function()
   Parameters.set( "flatDarksOnly", this.flatDarksOnly );
 
   Parameters.set( "calibrateOnly", this.calibrateOnly );
+  Parameters.set( "groupLightsOfDifferentExposure", this.groupLightsOfDifferentExposure );
   Parameters.set( "generateDrizzleData", this.generateDrizzleData );
 
   Parameters.set( "cosmeticCorrection", this.cosmeticCorrection );
@@ -2808,27 +2989,29 @@ StackEngine.prototype.exportParameters = function()
 
   Parameters.set( "integrate", this.integrate );
 
-  if ( this.exportCalibrationFiles )
-    for ( var i = 0; i < this.frameGroups.length; ++i )
-      if ( this.frameGroups[ i ].fileItems.length > 0 )
-      {
-        var group = this.frameGroups[ i ];
-        Parameters.setIndexed( "group_imageType", i, group.imageType );
-        Parameters.setIndexed( "group_filter", i, group.filter );
-        Parameters.setIndexed( "group_binning", i, group.binning );
-        Parameters.setIndexed( "group_exposureTime", i, group.exposureTime );
-        Parameters.setIndexed( "group_masterFrame", i, group.masterFrame );
-        Parameters.setIndexed( "group_enabled", i, group.enabled );
+  // Parameters.set( "frameGroups", this.framesGroupsToStringData() );
 
-        var groupIndexId = Parameters.indexedId( "group_frames", i );
-        for ( var j = 0; j < group.fileItems.length; ++j )
-        {
-          var item = group.fileItems[ j ];
-          Parameters.setIndexed( groupIndexId + "_filePath", j, item.filePath );
-          Parameters.setIndexed( groupIndexId + "_exposureTime", j, item.exposureTime );
-          Parameters.setIndexed( groupIndexId + "_enabled", j, item.enabled );
-        }
-      }
+  // if ( this.exportCalibrationFiles )
+  //   for ( var i = 0; i < this.frameGroups.length; ++i )
+  //     if ( this.frameGroups[ i ].fileItems.length > 0 )
+  //     {
+  //       var group = this.frameGroups[ i ];
+  //       Parameters.setIndexed( "group_imageType", i, group.imageType );
+  //       Parameters.setIndexed( "group_filter", i, group.filter );
+  //       Parameters.setIndexed( "group_binning", i, group.binning );
+  //       Parameters.setIndexed( "group_exposureTime", i, group.exposureTime );
+  //       Parameters.setIndexed( "group_masterFrame", i, group.masterFrame );
+  //       Parameters.setIndexed( "group_enabled", i, group.enabled );
+
+  //       var groupIndexId = Parameters.indexedId( "group_frames", i );
+  //       for ( var j = 0; j < group.fileItems.length; ++j )
+  //       {
+  //         var item = group.fileItems[ j ];
+  //         Parameters.setIndexed( groupIndexId + "_filePath", j, item.filePath );
+  //         Parameters.setIndexed( groupIndexId + "_exposureTime", j, item.exposureTime );
+  //         Parameters.setIndexed( groupIndexId + "_enabled", j, item.enabled );
+  //       }
+  //     }
 };
 
 StackEngine.prototype.runDiagnostics = function()
@@ -2905,7 +3088,7 @@ StackEngine.prototype.runDiagnostics = function()
 
     for ( var i = 0; i < this.frameGroups.length; ++i )
       if ( !this.frameGroups[ i ].filter.isEmpty() )
-        if ( this.frameGroups[ i ].cleanFilterName() != this.frameGroups[ i ].filter )
+        if ( this.frameGroups[ i ].filter.cleanFilterName() != this.frameGroups[ i ].filter )
           this.warning( "Invalid file name characters will be replaced with underscores " +
             "in filter name: \'" + this.frameGroups[ i ].filter + "\'" );
 

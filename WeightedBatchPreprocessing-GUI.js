@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-GUI.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.0
+// This file is part of Weighted Batch Preprocessing Script version 1.1.0
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -519,6 +519,7 @@ function ImageIntegrationControl( parent, imageType, expand )
   this.rejectionAlgorithmComboBox.addItem( "Winsorized Sigma Clipping" );
   this.rejectionAlgorithmComboBox.addItem( "Averaged Sigma Clipping" );
   this.rejectionAlgorithmComboBox.addItem( "Linear Fit Clipping" );
+  this.rejectionAlgorithmComboBox.addItem( "Auto" );
   this.rejectionAlgorithmComboBox.onItemSelected = function( item )
   {
     engine.rejection[ this.parent.parent.imageType ] = item;
@@ -549,7 +550,8 @@ function ImageIntegrationControl( parent, imageType, expand )
     "<p>The <b>min/max</b> method can be used to ensure rejection of extreme values. Min/max performs an " +
     "unconditional rejection of a fixed number of pixels from each stack, without any statistical basis. " +
     "Rejection methods based on robust statistics, such as percentile, Winsorized sigma clipping, linear " +
-    "fitting and averaged sigma clipping are in general preferable.</p>";
+    "fitting and averaged sigma clipping are in general preferable.</p>" +
+    "<p><b>Auto</b> selects the best algorithm depending on the amount of images in the group: ";
 
   this.rejectionAlgorithmSizer = new HorizontalSizer;
   this.rejectionAlgorithmSizer.spacing = 4;
@@ -845,6 +847,17 @@ function ImageIntegrationControl( parent, imageType, expand )
         this.linearFitLowControl.enabled = true;
         this.linearFitHighControl.enabled = true;
         break;
+      case ImageIntegration.prototype.LinearFit + 1:
+        this.minMaxLowLabel.enabled = true;
+        this.minMaxLowSpinBox.enabled = true;
+        this.minMaxHighLabel.enabled = true;
+        this.minMaxHighSpinBox.enabled = true;
+        this.percentileLowControl.enabled = true;
+        this.percentileHighControl.enabled = true;
+        this.sigmaLowControl.enabled = true;
+        this.sigmaHighControl.enabled = true;
+        this.linearFitLowControl.enabled = true;
+        this.linearFitHighControl.enabled = true;
     }
 
     if ( this.imageType == ImageType.FLAT )
@@ -1431,7 +1444,7 @@ function SubframesWeightingControl( parent )
       engine.useBestLightAsReference = false;
       engine.generateSubframesWeightsAfterRegistration = false;
     }
-    this.updateControls();
+    this.dialog.updateControls();
 
   };
 
@@ -1744,6 +1757,8 @@ function FileControl( parent, imageType )
       this.darkExposureToleranceSpinBox.onValueUpdated = function( value )
       {
         engine.darkExposureTolerance = value;
+        engine.reconstructGroups();
+        parent.dialog.refreshTreeBoxes();
       };
 
       this.darkExposureToleranceSizer = new HorizontalSizer;
@@ -1813,6 +1828,21 @@ function FileControl( parent, imageType )
       this.calibrateOnlySizer.add( this.calibrateOnlyCheckBox );
       this.calibrateOnlySizer.addStretch();
 
+      this.groupLightsWithDifferentExposureCheckBox = new CheckBox( this );
+      this.groupLightsWithDifferentExposureCheckBox.text = "Group lights with different exposures";
+      this.groupLightsWithDifferentExposureCheckBox.toolTip = "<p>When this option is active light frames with same binning and filter will be grouped and integrated together even if they have different exposures.</p>";
+      this.groupLightsWithDifferentExposureCheckBox.onCheck = function( checked )
+      {
+        engine.groupLightsOfDifferentExposure = checked;
+        engine.reconstructGroups();
+        parent.dialog.refreshTreeBoxes();
+      };
+
+      this.groupLightsWithDifferentExposureSizer = new HorizontalSizer;
+      this.groupLightsWithDifferentExposureSizer.addUnscaledSpacing( this.dialog.labelWidth1 + this.logicalPixelsToPhysical( 4 + 6 ) ); // + spacing + integration control margin
+      this.groupLightsWithDifferentExposureSizer.add( this.groupLightsWithDifferentExposureCheckBox );
+      this.groupLightsWithDifferentExposureSizer.addStretch();
+
       this.cosmeticCorrectionControl = new CosmeticCorrectionControl( this );
       this.deBayeringControl = new DeBayerControl( this );
       this.lightsRegistrationControl = new LightsRegistrationControl( this );
@@ -1823,6 +1853,8 @@ function FileControl( parent, imageType )
       this.imageIntegrationControl = new ImageIntegrationControl( this, ImageType.LIGHT, true /*expand*/ );
 
       this.rightPanelSizer.add( this.calibrateOnlySizer );
+      this.rightPanelSizer.addSpacing( 8 );
+      this.rightPanelSizer.add( this.groupLightsWithDifferentExposureSizer );
       this.rightPanelSizer.addSpacing( 8 );
       this.rightPanelSizer.add( this.cosmeticCorrectionControl );
       this.rightPanelSizer.addSpacing( 8 );
@@ -2152,14 +2184,13 @@ function StackDialog()
   this.helpLabel = new Label( this );
   this.helpLabel.margin = 4;
   this.helpLabel.wordWrapping = true;
-  this.helpLabel.useRichTextfff = true;
-  this.helpLabel.text = "<p>A script for calibration and alignment of light frames<br/>" +
+  this.helpLabel.useRichText = true;
+  this.helpLabel.text =
+    "<p>A script for calibration and alignment of light frames<br/>" +
     "Copyright (c) 2012 Kai Wiechen.<br/>" +
-    "Copyright (c) 2018 Roberto Sartori.<br/>" +
-    "Copyright (c) 2018 Tommaso Rubechi.<br/>" +
-    "Copyright (c) 2012-2019 Pleiades Astrophoto.<br/>" +
-    "<br/>" +
-    "version: v1.0.2</p >";;
+    "Copyright (c) 2019 Roberto Sartori.<br/>" +
+    "Copyright (c) 2019 Tommaso Rubechi.<br/>" +
+    "Copyright (c) 2012-2019 Pleiades Astrophoto.<br/>";
 
   //
 
@@ -2751,6 +2782,7 @@ StackDialog.prototype.updateControls = function()
         break;
       case ImageType.LIGHT:
         page.calibrateOnlyCheckBox.checked = engine.calibrateOnly;
+        page.groupLightsWithDifferentExposureCheckBox.checked = engine.groupLightsOfDifferentExposure;
         page.cosmeticCorrectionControl.updateControls();
         page.deBayeringControl.updateControls();
         page.lightsRegistrationControl.updateControls();
@@ -2783,59 +2815,93 @@ StackDialog.prototype.refreshTreeBoxes = function()
   for ( var j = 0; j < this.tabBox.numberOfPages; ++j )
     this.tabBox.pageControlByIndex( j ).treeBox.clear();
 
+  // map groups to hash-tree
+  var tree = {};
   for ( var i = 0; i < engine.frameGroups.length; ++i )
   {
     var frameGroup = engine.frameGroups[ i ];
+    let imageType = frameGroup.imageType;
+    let binning = frameGroup.binning.toString();
+    let filter = frameGroup.filter;
+    let exposureTimes = frameGroup.exposureTimes;
 
-    var nodes = new Array;
+    var node;
+    var treeNode;
 
-    /*
-     * NB: We cannot use the TreeBoxNode( TreeBox ) constructor here because
-     * our treeBox object is an instance of StyledTreeBox, which we have
-     * derived from TreeBox. TreeBoxNode's constructor will complain about
-     * treeBox because it is not a 'real' TreeBox. This is a limitation of
-     * current PJSR versions. So we construct an orphan TreeBoxNode and then
-     * add it to treeBox.
-     */
-    //nodes.push( new TreeBoxNode( this.tabBox.pageControlByIndex( frameGroup.imageType ).treeBox ) );
-    var node = new TreeBoxNode;
-    this.tabBox.pageControlByIndex( frameGroup.imageType ).treeBox.add( node );
-    node.expanded = true;
-    node.setText( 0, "Binning " + frameGroup.binning.toString() );
-    node.nodeData_type = "FrameGroup";
-    node.nodeData_index = i;
-    nodes.push( node );
-
-    if ( frameGroup.imageType != ImageType.BIAS )
+    if ( !tree.hasOwnProperty( imageType ) )
     {
-      if ( frameGroup.imageType == ImageType.DARK )
+      tree[ imageType ] = {};
+      treeNode = tree[ imageType ];
+    }
+    else
+    {
+      treeNode = tree[ imageType ];
+      node = treeNode.node;
+    }
+
+    if ( !treeNode.hasOwnProperty( binning ) )
+    {
+      node = new TreeBoxNode;
+      this.tabBox.pageControlByIndex( imageType ).treeBox.add( node );
+      node.expanded = true;
+      node.setText( 0, "Binning " + binning );
+      node.nodeData_type = "FrameGroup";
+      node.nodeData_index = i;
+      treeNode[ binning ] = {};
+      treeNode[ binning ].node = node;
+      treeNode = treeNode[ binning ];
+    }
+    else
+    {
+      treeNode = treeNode[ binning ];
+      node = treeNode.node;
+    }
+
+    // BIASes and DARKs are not grouped by filter 
+    if ( imageType !== ImageType.BIAS )
+    {
+
+      if ( imageType !== ImageType.DARK )
       {
-        if ( frameGroup.exposureTime > 0 )
+        let filterName = filter.length > 0 ? filter : 'noFilter';
+        if ( !treeNode.hasOwnProperty( filterName ) )
         {
-          var n = nodes.length;
-          var node = new TreeBoxNode( nodes[ n - 1 ] );
+          node = new TreeBoxNode( node );
           node.expanded = true;
-          node.setText( 0, format( "%.2fs", frameGroup.exposureTime ) );
+          node.setText( 0, filterName );
           node.nodeData_type = "FrameGroup";
           node.nodeData_index = i;
-          nodes.push( node );
+          treeNode[ filterName ] = {};
+          treeNode[ filterName ].node = node;
+          treeNode = treeNode[ filterName ];
         }
+        else
+        {
+          treeNode = treeNode[ filterName ];
+          node = treeNode.node;
+
+        }
+      }
+
+      let exposureTimesString = exposureTimes.length == 1 ? format( "%.2fs", exposureTimes[ 0 ] ) : "[" + exposureTimes.map( exp => format( "%.2fs", exp ) ).join( ' , ' ) + ']';
+      if ( !treeNode.hasOwnProperty( exposureTimesString ) )
+      {
+
+        node = new TreeBoxNode( node );
+        node.expanded = true;
+        node.setText( 0, exposureTimesString );
+        node.nodeData_type = "FrameGroup";
+        node.nodeData_index = i;
+        treeNode[ exposureTimesString ] = {};
+        treeNode[ exposureTimesString ].node = node;
       }
       else
       {
-        if ( !frameGroup.filter.isEmpty() )
-        {
-          var node = new TreeBoxNode( nodes[ 0 ] );
-          node.expanded = true;
-          node.setText( 0, frameGroup.filter );
-          node.nodeData_type = "FrameGroup";
-          node.nodeData_index = i;
-          nodes.push( node );
-        }
+        node = treeNode[ exposureTimesString ].node;
       }
     }
 
-    var rootNode = nodes[ nodes.length - 1 ];
+    let rootNode = node;
 
     for ( var j = 0; j < frameGroup.fileItems.length; ++j )
     {

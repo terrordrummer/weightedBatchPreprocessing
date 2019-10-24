@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-helper.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.0
+// This file is part of Weighted Batch Preprocessing Script version 1.1.0
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -432,6 +432,14 @@ function ScaledButtonBitmap( parent, bitmap )
 function ScaledButtonIcon( parent, iconFilePath )
 {
   return ScaledButtonBitmap( parent, new Bitmap( iconFilePath ) );
+}
+
+function RejectionToString( code )
+{
+  let rejectionStrings = [ 'No rejection', 'Min/Max', 'Percentile Clipping', 'Sigma Clipping', 'Winsorized Sigma Clipping', 'Averaged Sigma Clipping', 'Linear Fit Clipping', 'Auto' ];
+  if ( code <= rejectionStrings.length - 1 )
+    return rejectionStrings[ code ]
+  return 'undefined';
 }
 
 // ----------------------------------------------------------------------------

@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.0
+// This file is part of Weighted Batch Preprocessing Script version 1.1.0
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -138,7 +138,7 @@ function main()
     }
   }
 
-  console.hide();
+  // console.hide();
 
   if ( Parameters.isViewTarget )
     throw new Error( TITLE + " can only be executed in the global context." );
