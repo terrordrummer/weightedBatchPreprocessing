@@ -1559,7 +1559,7 @@ StackEngine.prototype.doLight = function()
   var processedImageGroups = new Array;
   var imagesDescriptors = new Array;
   var imagesDescriptorsMinMax = new Array;
-  var actualReferenceImage = this.actualReferenceImage;
+  var actualReferenceImage = this.referenceImage;
   for ( var i = 0; i < this.frameGroups.length; ++i )
   {
     if ( this.frameGroups[ i ].imageType == ImageType.LIGHT )
