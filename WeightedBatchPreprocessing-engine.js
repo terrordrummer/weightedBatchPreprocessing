@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-engine.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.0
+// This file is part of Weighted Batch Preprocessing Script version 1.2.1
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -724,10 +724,8 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
           break;
         case "EXPTIME":
         case "EXPOSURE":
-          if ( !forcedExposureTime )
-          {
+          if ( !forcedExposureTime && imageType == ImageType.BIAS )
             exposureTime = parseFloat( value );
-          }
           break;
       }
     }
@@ -756,6 +754,17 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
       return false;
     }
   }
+
+  // smart naming: extract binning, filter and duration from file name
+  if ( !forcedBinning && binning == 1 )
+    binning = File.getBinningFromPath( filePath );
+  if ( !forcedFilter && filter == "" )
+    filter = File.getFilterFromPath( filePath );
+  if ( !forcedExposureTime && imageType !== ImageType.BIAS && exposureTime == 0 )
+    exposureTime = File.getExposureTimeFromPath( filePath );
+
+
+  // smart naming: extract file properties from the filePath
 
   var isMaster = false;
   switch ( imageType )

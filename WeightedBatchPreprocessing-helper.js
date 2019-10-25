@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-helper.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.0
+// This file is part of Weighted Batch Preprocessing Script version 1.2.1
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -318,6 +318,44 @@ if ( !File.loadFITSKeywords )
     f.close();
     return keywords;
   };
+
+/*
+ * Extract the exposure time from the first last matching pattern occurrence in its filePath.
+ */
+File.getExposureTimeFromPath = function( filePath )
+{
+  var regexp = /(EXPTIME|EXPOSURE)(_|-)[0-9]+(\.[0-9]*)?/gm;
+  let matches = regexp.exec( filePath );
+  if ( matches === null )
+    return 0;
+  let value = Number( matches[ 0 ].split( '_' )[ 1 ] )
+  return value !== NaN ? value : 0
+}
+
+/*
+ * Extract the binning from the first last matching pattern occurrence in its filePath.
+ */
+File.getBinningFromPath = function( filePath )
+{
+  var regexp = /(XBINNING|CCDBINX|BINNING)(_|-)[0-9]+/gm;
+  let matches = regexp.exec( filePath );
+  if ( matches === null )
+    return 1;
+  let value = Number( matches[ 0 ].split( '_' )[ 1 ] )
+  return value !== NaN ? value : 1
+}
+
+/*
+ * Extract the filter name from the first last matching pattern occurrence in its filePath.
+ */
+File.getFilterFromPath = function( filePath )
+{
+  var regexp = /(FILTER|INSFLNAM)(_|-)[a-zA-Z]+/gm;
+  let matches = regexp.exec( filePath );
+  if ( matches === null )
+    return "";
+  return matches[ 0 ].split( '_' )[ 1 ]
+}
 
 // ----------------------------------------------------------------------------
 // Extensions to the Parameters object
