@@ -350,7 +350,7 @@ File.getBinningFromPath = function( filePath )
  */
 File.getFilterFromPath = function( filePath )
 {
-  var regexp = /(FILTER|INSFLNAM)(_|-)[a-zA-Z]+/gm;
+  var regexp = /(FILTER|INSFLNAM)(_|-)[a-zA-Z0-9]+/gm;
   let matches = regexp.exec( filePath );
   if ( matches === null )
     return "";

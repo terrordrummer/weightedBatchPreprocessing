@@ -97,6 +97,7 @@ function main()
 
       var T = new ElapsedTime;
 
+      engine.cleanProcessLog();
       if ( !engine.useAsMaster[ ImageType.BIAS ] )
         engine.doBias();
       if ( !engine.useAsMaster[ ImageType.DARK ] )
@@ -110,6 +111,9 @@ function main()
 
       console.flush();
       console.hide();
+
+      // show process logs
+      engine.showProcessLogs();
     }
     catch ( x )
     {
@@ -138,7 +142,7 @@ function main()
     }
   }
 
-  // console.hide();
+  console.hide();
 
   if ( Parameters.isViewTarget )
     throw new Error( TITLE + " can only be executed in the global context." );

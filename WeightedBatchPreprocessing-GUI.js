@@ -2863,7 +2863,7 @@ StackDialog.prototype.refreshTreeBoxes = function()
 
       if ( imageType !== ImageType.DARK )
       {
-        let filterName = filter.length > 0 ? filter : 'noFilter';
+        let filterName = filter.length > 0 ? filter : 'NoFilter';
         if ( !treeNode.hasOwnProperty( filterName ) )
         {
           node = new TreeBoxNode( node );

@@ -54,7 +54,11 @@
 #include <pjsr/StdDialogCode.jsh>
 #include <pjsr/ColorSpace.jsh>
 #include <pjsr/StarDetector.jsh>
+#include "WeightedBatchPreprocessing-processLogger.js"
+#define SAVE_GROUPS true
 /* beautify ignore:end */
+
+
 
 // ----------------------------------------------------------------------------
 
@@ -211,8 +215,21 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   {
     console.noteln( 'Group of ', this.fileItems.length, ' ', StackEngine.imageTypeToString( this.imageType ), ' frames' );
     console.noteln( 'BINNING  : ', this.binning );
-    console.noteln( 'Filter   : ', this.filter.length > 0 ? this.filter : 'noFilter' );
+    console.noteln( 'Filter   : ', this.filter.length > 0 ? this.filter : 'NoFilter' );
     console.noteln( 'Exposure : ', this.exposuresToString() );
+  }
+
+  this.logString = function()
+  {
+    let str = '<b>---------------------------------\n';
+    str += 'Group of ' + this.fileItems.length + ' ' + StackEngine.imageTypeToString( this.imageType ) + ' frames\n';
+    str += 'BINNING  : ' + this.binning + '\n';
+    if ( this.imageType != ImageType.BIAS && this.imageType != ImageType.DARK )
+      str += 'Filter   : ' + this.filter.length > 0 ? this.filter : 'NoFilter' + '\n';
+    if ( this.imageType != ImageType.BIAS )
+      str += 'Exposure : ' + this.exposuresToString() + '\n';
+    str += '---------------------------------</b>';
+    return str;
   }
 
   this.toString = function()
@@ -221,14 +238,14 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
     if ( !this.filter.isEmpty() )
       a.push( "filter = \"" + this.filter + "\"" );
     else
-      a.push( "filter = noFilter" );
+      a.push( "filter = NoFilter" );
     a.push( "binning = " + this.binning.toString() );
-    if ( this.exposureTimes.length > 0 )
+    if ( this.exposureTimes.length == 1 )
     {
-      a.push( format( "exposures = %.2fs", this.exposureTime ) );
+      a.push( format( "exposure = %.2fs", this.exposureTime ) );
     }
-    if ( this.exposureTimes.length > 0 )
-      a.push( 'exposure = ', this.exposuresToString() );
+    else if ( this.exposureTimes.length > 1 )
+      a.push( 'exposures = ', this.exposuresToString() );
     a.push( "length = " + this.fileItems.length.toString() );
     var s = StackEngine.imageTypeToString( this.imageType ) + " frames (";
     s += a[ 0 ];
@@ -388,6 +405,9 @@ function StackEngine()
 
   // Light integration parameters
   this.integrate = DEFAULT_INTEGRATE;
+
+  // process logger
+  this.processLogger = new ProcessLogger();
 }
 
 StackEngine.prototype = new Object;
@@ -540,6 +560,79 @@ StackEngine.prototype.clearDiagnosticMessages = function()
   this.diagnosticMessages = new Array;
 };
 
+// ----------------------------------------------------------------------------
+
+function ProcessLogDialog( processLogger )
+{
+  this.__base__ = Dialog;
+  this.__base__();
+
+  var info = processLogger.toString();
+
+  this.infoLabel = new Label( this );
+  this.infoLabel.text = format( "Process log:" );
+
+  this.infoBox = new TextBox( this );
+  this.infoBox.useRichText = true;
+  this.infoBox.readOnly = true;
+  this.infoBox.styleSheet = this.scaledStyleSheet( "QWidget { font-family: DejaVu Sans Mono, monospace; font-size: 10pt; color: #0066ff; padding: 4px;" );
+  this.infoBox.setScaledMinSize( 800, 300 );
+  this.infoBox.text = info;
+
+  this.okButton = new PushButton( this );
+  this.okButton.defaultButton = true;
+  this.okButton.text = "OK";
+  this.okButton.icon = this.scaledResource( ":/icons/ok.png" );
+  this.okButton.onClick = function()
+  {
+    this.dialog.ok();
+  };
+
+  this.saveButton = new PushButton( this );
+  this.saveButton.defaultButton = true;
+  this.saveButton.text = "Save...";
+  this.saveButton.icon = this.scaledResource( ":/icons/cancel.png" );
+  this.saveButton.onClick = function()
+  {
+    // WRITE LOGS
+  };
+
+  this.buttonsSizer = new HorizontalSizer;
+  this.buttonsSizer.addStretch();
+  this.buttonsSizer.add( this.okButton );
+
+  this.buttonsSizer.addSpacing( 8 );
+  this.buttonsSizer.add( this.saveButton );
+
+
+  this.sizer = new VerticalSizer;
+  this.sizer.margin = 8;
+  this.sizer.add( this.infoLabel );
+  this.sizer.addSpacing( 4 );
+  this.sizer.add( this.infoBox );
+  this.sizer.addSpacing( 8 );
+  this.sizer.add( this.buttonsSizer );
+
+  this.adjustToContents();
+  this.setMinSize();
+
+  this.windowTitle = "Process log";
+}
+
+ProcessLogDialog.prototype = new Dialog;
+
+
+StackEngine.prototype.showProcessLogs = function()
+{
+  let dialog = new ProcessLogDialog( this.processLogger );
+  dialog.execute();
+}
+
+StackEngine.prototype.cleanProcessLog = function()
+{
+  this.processLogger.clean();
+}
+
 function IntegrationWarningDialog()
 {
   this.__base__ = Dialog;
@@ -671,8 +764,8 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
     imageType = ImageType.UNKNOWN;
 
   var forcedFilter = filter != undefined && filter != "?"; // ### see Add Custom Frames dialog
-  if ( !forcedFilter )
-    filter = "";
+  if ( !forcedFilter || filter == "?" )
+    filter = "NoFilter";
 
   var forcedBinning = binning != undefined && binning > 0;
   if ( !forcedBinning )
@@ -755,16 +848,13 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
     }
   }
 
-  // smart naming: extract binning, filter and duration from file name
+  // smart naming: extract binning, filter and duration from filePath
   if ( !forcedBinning && binning == 1 )
     binning = File.getBinningFromPath( filePath );
   if ( !forcedFilter && filter == "" )
     filter = File.getFilterFromPath( filePath );
   if ( !forcedExposureTime && imageType !== ImageType.BIAS && exposureTime == 0 )
     exposureTime = File.getExposureTimeFromPath( filePath );
-
-
-  // smart naming: extract file properties from the filePath
 
   var isMaster = false;
   switch ( imageType )
@@ -1486,13 +1576,21 @@ StackEngine.prototype.doBias = function()
   for ( var i = 0; i < this.frameGroups.length; ++i )
     if ( this.frameGroups[ i ].imageType == ImageType.BIAS && !this.frameGroups[ i ].masterFrame )
     {
+      this.processLogger.addMessage( this.frameGroups[ i ].logString() );
+
       var masterBiasPath = this.doIntegrate( this.frameGroups[ i ] );
       if ( masterBiasPath.isEmpty() )
-        throw new Error( "Error integrating bias frames." );
+      {
+        console.warningln( " ** Warning: Error integrating bias frames." );
+        this.processLogger.addWarning( "Error integrating bias frames." );
+        return;
+      }
+
       this.frameGroups[ i ].masterFrame = true;
       this.frameGroups[ i ].fileItems.unshift( new FileItem( masterBiasPath, 0 ) );
       this.useAsMaster[ ImageType.BIAS ] = true;
-
+      this.processLogger.addSuccess( "Integration OK", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
+      this.processLogger.newLine();
       processEvents();
       gc();
     }
@@ -1503,13 +1601,21 @@ StackEngine.prototype.doDark = function()
   for ( var i = 0; i < this.frameGroups.length; ++i )
     if ( this.frameGroups[ i ].imageType == ImageType.DARK && !this.frameGroups[ i ].masterFrame )
     {
+      this.processLogger.addMessage( this.frameGroups[ i ].logString() );
+
       var masterDarkPath = this.doIntegrate( this.frameGroups[ i ] );
       if ( masterDarkPath.isEmpty() )
-        throw new Error( "Error integrating dark frames." );
+      {
+        console.warningln( " ** Warning: Error integrating bias frames." );
+        this.processLogger.addWarning( "Error integrating dark frames." );
+        return;
+      }
+
       this.frameGroups[ i ].masterFrame = true;
       this.frameGroups[ i ].fileItems.unshift( new FileItem( masterDarkPath, this.frameGroups[ i ].exposureTime ) );
       this.useAsMaster[ ImageType.DARK ] = true;
-
+      this.processLogger.addSuccess( "Integration OK", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
+      this.processLogger.newLine();
       processEvents();
       gc();
     }
@@ -1520,9 +1626,15 @@ StackEngine.prototype.doFlat = function()
   for ( var i = 0; i < this.frameGroups.length; ++i )
     if ( this.frameGroups[ i ].imageType == ImageType.FLAT && !this.frameGroups[ i ].masterFrame )
     {
+      this.processLogger.addMessage( this.frameGroups[ i ].logString() );
+
       var outputData = this.doCalibrate( this.frameGroups[ i ] );
       if ( outputData == null )
-        throw new Error( "Error calibrating flat frames." );
+      {
+        console.warningln( " ** Warning: Error calibrating flat frames." )
+        this.processLogger.addWarning( "Error calibrating flat frames." );
+        return;
+      }
 
       var tmpGroup = new FrameGroup( ImageType.FLAT, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, this.frameGroups[ i ].exposureTime, null, false );
       for ( var c = 0; c < outputData.length; ++c )
@@ -1530,20 +1642,34 @@ StackEngine.prototype.doFlat = function()
         var filePath = outputData[ c ][ 0 ]; // outputData.outputImage
         if ( !filePath.isEmpty() )
           if ( File.exists( filePath ) )
-            tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
+            this.frameGroups[ i ].fileItems.push( new FileItem( filePath, 0 ) );
           else
+          {
             console.warningln( "** Warning: File does not exist after image calibration: " + filePath );
+            this.processLogger.addWarning( "File does not exist after image calibration: " + filePath );
+          }
       }
       if ( tmpGroup.fileItems.length < 1 )
-        throw new Error( "All calibrated flat frame files have been removed or cannot be accessed." );
+      {
+        console.warningln( "** Warning: All calibrated flat frame files have been removed or cannot be accessed." );
+        this.processLogger.addError( "All calibrated flat frame files have been removed or cannot be accessed." );
+        this.processLogger.newLine();
+        return;
+      }
+      this.processLogger.addSuccess( "Calibration OK" );
       var masterFlatPath = this.doIntegrate( tmpGroup );
       if ( masterFlatPath.isEmpty() )
-        throw new Error( "Error integrating flat frames." );
+      {
+        console.warningln( "** Warning: Error integrating flat frames." );
+        this.processLogger.addError( "Error integrating flat frames." );
+        this.processLogger.newLine();
+        return;
+      }
       this.frameGroups[ i ].masterFrame = true;
       this.useAsMaster[ ImageType.FLAT ] = true;
-      // this.frameGroups[ i ].fileItems.unshift( new FileItem( masterFlatPath, 0 ) );
       this.addFile( masterFlatPath, ImageType.FLAT );
-
+      this.processLogger.addSuccess( "Integration OK", "master file " + masterFlatPath );
+      this.processLogger.newLine();
       processEvents();
       gc();
     }
@@ -1575,7 +1701,11 @@ StackEngine.prototype.doLight = function()
     {
       var outputData = this.doCalibrate( this.frameGroups[ i ] )
       if ( outputData == null )
-        throw new Error( "Error calibrating light frames." );
+      {
+        console.warningln( "** Warning: Error calibrating light frames." );
+        this.processLogger.addWarning( "Error calibrating light frames." );
+        return;
+      }
 
       var images = new Array;
       for ( var c = 0; c < outputData.length; ++c )
@@ -1585,10 +1715,18 @@ StackEngine.prototype.doLight = function()
           if ( File.exists( filePath ) )
             images.push( filePath );
           else
+          {
             console.warningln( "** Warning: File does not exist after image calibration: " + filePath );
+            this.processLogger.addWarning( "File does not exist after image calibration: " + filePath );
+          }
       }
       if ( images.length < 1 )
-        throw new Error( "All calibrated light frame files have been removed or cannot be accessed." );
+      {
+        console.warningln( "** Warning: All calibrated light frame files have been removed or cannot be accessed." );
+        this.processLogger.addWarning( "All calibrated light frame files have been removed or cannot be accessed." );
+        return;
+      }
+      this.processLogger.addMessage( "Calibration OK" );
 
       if ( this.cosmeticCorrection )
       {
@@ -1601,10 +1739,19 @@ StackEngine.prototype.doLight = function()
 
         var CC = ProcessInstance.fromIcon( this.cosmeticCorrectionTemplateId );
         if ( CC == null )
-          throw new Error( "No such process icon: " + this.cosmeticCorrectionTemplateId );
+        {
+          console.warningln( "** Warning: No such process icon: " + this.cosmeticCorrectionTemplateId );
+          this.processLogger.addWarning( "No such process icon: " + this.cosmeticCorrectionTemplateId );
+          return;
+        }
         if ( !( CC instanceof CosmeticCorrection ) )
-          throw new Error( "The specified icon does not transport an instance " +
+        {
+          console.warningln( "** Warning: The specified icon does not transport an instance " +
             "of CosmeticCorrection: " + this.cosmeticCorrectionTemplateId );
+          this.processLogger.addWarning( "The specified icon does not transport an instance " +
+            "of CosmeticCorrection: " + this.cosmeticCorrectionTemplateId );
+          return;
+        }
 
         var cosmetizedDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/light/cosmetized" );
 
@@ -1636,10 +1783,18 @@ StackEngine.prototype.doLight = function()
             images.push( ccFilePath );
           }
           else
+          {
             console.warningln( "** Warning: File does not exist after cosmetic correction: " + ccFilePath );
+            this.processLogger.addWarning( "File does not exist after cosmetic correction: " + ccFilePath );
+          }
         }
         if ( images.length < 1 )
-          throw new Error( "All cosmetic corrected light frame files have been removed or cannot be accessed." );
+        {
+          console.warningln( "** Warning: All cosmetic corrected light frame files have been removed or cannot be accessed." );
+          this.processLogger.addWarning( "All cosmetic corrected light frame files have been removed or cannot be accessed." );
+          return;
+        }
+        this.processLogger.addMessage( "Cosmetic Correction OK" );
 
         console.noteln( "<end><cbr><br>",
           "************************************************************" );
@@ -1684,11 +1839,19 @@ StackEngine.prototype.doLight = function()
                 actualReferenceImage = filePath;
             }
           else
+          {
             console.warningln( "** Warning: File does not exist after image demosaicing: " + filePath );
+            this.processLogger.addWarning( "File does not exist after image demosaicing: " + filePath );
+          }
         }
-        if ( images.length < 1 )
-          throw new Error( "All demosaiced light frame files have been removed or cannot be accessed." );
+        if ( debayerImages.length < 1 )
+        {
 
+          console.warningln( "** Warning: All demosaiced light frame files for group with BINNING = ", this.frameGroups[ i ].binning, ", FILTER = ", this.frameGroups[ i ].filter, " and EXPOSURE = ", this.frameGroups[ i ].exposuresToString, " have been removed or cannot be accessed." );
+          this.processLogger.addWarning( "All demosaiced light frame files for group with BINNING = ", this.frameGroups[ i ].binning, ", FILTER = ", this.frameGroups[ i ].filter, " and EXPOSURE = ", this.frameGroups[ i ].exposuresToString, " have been removed or cannot be accessed." );
+          return;
+        }
+        this.processLogger.addMessage( "Debayer OK" );
         images = debayerImages;
 
         console.noteln( "<end><cbr><br>",
@@ -1702,6 +1865,7 @@ StackEngine.prototype.doLight = function()
       processedImageGroup.binning = this.frameGroups[ i ].binning;
       processedImageGroup.exposureTime = this.frameGroups[ i ].exposureTime;
       processedImageGroup.exposureTimes = this.frameGroups[ i ].exposureTimes;
+      processedImageGroup.description = this.frameGroups[ i ].toString;
       processedImageGroup.images = new Array;
       for ( var ii = 0; ii < images.length; ++ii )
         processedImageGroup.images.push( images[ ii ] );
@@ -1716,32 +1880,34 @@ StackEngine.prototype.doLight = function()
     }
   }
 
-  if ( this.useBestLightAsReference )
-  {
-    console.noteln( "<end><cbr><br>",
-      "************************************************************" );
-    console.noteln( "* Begin selection of the best reference frame for registration" );
-    console.noteln( "************************************************************" );
-    console.flush();
-
-    actualReferenceImage = this.findRegistrationReferenceImage( imagesDescriptors );
-
-    console.noteln( "<end><cbr><br>" );
-    console.noteln( "Best reference frame for registration: " + actualReferenceImage );
-    console.noteln( "<end><cbr><br>",
-      "************************************************************" );
-    console.noteln( "* End selection of the best reference frame for registration" );
-    console.noteln( "************************************************************" );
-    console.flush();
-  }
-
-  if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration === false )
-  {
-    this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
-  }
-
   if ( !this.calibrateOnly )
   {
+    if ( this.useBestLightAsReference )
+    {
+      console.noteln( "<end><cbr><br>",
+        "************************************************************" );
+      console.noteln( "* Begin selection of the best reference frame for registration" );
+      console.noteln( "************************************************************" );
+      console.flush();
+
+      actualReferenceImage = this.findRegistrationReferenceImage( imagesDescriptors );
+
+      console.noteln( "<end><cbr><br>" );
+      console.noteln( "Best reference frame for registration: " + actualReferenceImage );
+      console.noteln( "<end><cbr><br>",
+        "************************************************************" );
+      console.noteln( "* End selection of the best reference frame for registration" );
+      console.noteln( "************************************************************" );
+      console.flush();
+      this.processLogger.addMessage( "Best reference frame for registration: " + actualReferenceImage );
+    }
+
+    if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration === false )
+    {
+      this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
+      this.processLogger.addMessage( "Weights stored into light frames" );
+    }
+
     for ( var p = 0; p < processedImageGroups.length; ++p )
     {
       let filter = processedImageGroups[ p ].filter;
@@ -1792,7 +1958,11 @@ StackEngine.prototype.doLight = function()
         SA.maxStars = this.maxStars;
 
       if ( !SA.executeGlobal() )
-        throw new Error( "Error registering light frames." );
+      {
+        console.warningln( " ** Warning: Error registering light frames." );
+        this.processLogger.addWarning( "Error registering light frames." );
+        return;
+      }
 
       images = new Array;
       for ( var c = 0; c < SA.outputData.length; ++c )
@@ -1802,15 +1972,24 @@ StackEngine.prototype.doLight = function()
           if ( File.exists( filePath ) )
             images.push( filePath );
           else
+          {
             console.warningln( "** Warning: File does not exist after image registration: " + filePath );
+            this.processLogger.addWarning( "File does not exist after image registration: " + filePath );
+          }
       }
 
       if ( images.length < 1 )
-        console.warningln( "All registered light frame files have been removed or cannot be accessed." );
+      {
+        console.warningln( " ** Warning: All registered light frame files have been removed or cannot be accessed." );
+        this.processLogger.addWarning( "All registered light frame files have been removed or cannot be accessed." );
+        return;
+      }
       else if ( images.length < 3 )
       {
         let failed = preRegistrationImagesCount - images.length;
         throw new Error( "Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, " provided. A minimum of 3 images must be succesfully registered." );
+        this.processLogger.addWarning( "All registered light frame files have been removed or cannot be accessed." );
+        returnl
       }
       else if ( preRegistrationImagesCount - images.length > 0 )
       {
@@ -1865,7 +2044,9 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   for ( var i = 0; i < frameGroup.fileItems.length; ++i )
     frameSet.push( frameGroup.fileItems[ i ].filePath );
   if ( frameSet.length < 3 )
-    throw new Error( "Cannot integrate less than three frames." );
+  {
+    frameGroup.warning( "Cannot integrate less than three frames." );
+  }
 
   console.noteln( "<end><cbr><br>",
     "************************************************************" );
@@ -2188,16 +2369,18 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
               for ( let j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
                 retVal[ j ] = [ this.frameGroups[ i ].fileItems[ j ].filePath ];
 
-        console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- neither master bias provided nor master dark matching the exposure has been found" );
+        console.noteln( "<end><cbr><br>* Calibration of " + StackEngine.imageTypeToString( imageType ) + " frames skipped -- neither master bias nor master dark matching the exposure has been found" );
         console.noteln( "<end><cbr><br>",
           "************************************************************" );
         console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
         console.noteln( "************************************************************" );
+        frameGroup.addWarning( "neither master provided nor master dark matching the exposure has been found" )
         return retVal;
       }
       else if ( masterBiasEnabled )
       {
         console.noteln( "<end><cbr><br>* " + StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
+        frameGroup.addWarning( StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
       }
     }
 
@@ -2293,6 +2476,11 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
       {
         calibratedImages.push( IC.outputData[ j ] );
       }
+    }
+    else
+    {
+      console.warningln( " ** Warning: Image Calibration failed" );
+      this.processLogger.addWarning( "Image Calibration failed" );
     }
 
     processEvents();
@@ -2486,8 +2674,9 @@ StackEngine.prototype.loadSettings = function()
     this.useTriangleSimilarity = o;
   if ( ( o = load( "integrate", DataType_Boolean ) ) != null )
     this.integrate = o;
-  // if ( ( o = load( "frameGroups", DataType_String ) ) != null )
-  //   this.framesGroupsFromStringData( o );
+  if ( SAVE_GROUPS )
+    if ( ( o = load( "frameGroups", DataType_String ) ) != null )
+      this.framesGroupsFromStringData( o );
 };
 
 StackEngine.prototype.saveSettings = function()
@@ -2570,7 +2759,8 @@ StackEngine.prototype.saveSettings = function()
   save( "useTriangleSimilarity", DataType_Boolean, this.useTriangleSimilarity );
   save( "integrate", DataType_Boolean, this.integrate );
 
-  // save( "frameGroups", DataType_String, this.framesGroupsToStringData() );
+  if ( SAVE_GROUPS )
+    save( "frameGroups", DataType_String, this.framesGroupsToStringData() );
 };
 
 StackEngine.prototype.setDefaultParameters = function()
@@ -2862,8 +3052,9 @@ StackEngine.prototype.importParameters = function()
   if ( Parameters.has( "integrate" ) )
     this.integrate = Parameters.getBoolean( "integrate" );
 
-  // if ( Parameters.has( "frameGroups" ) )
-  //   this.framesGroupsFromStringData( Parameters.getString( "frameGroups" ) );
+  if ( SAVE_GROUPS )
+    if ( Parameters.has( "frameGroups" ) )
+      this.framesGroupsFromStringData( Parameters.getString( "frameGroups" ) );
 
   // if ( this.exportCalibrationFiles )
   //   for ( var i = 0;; ++i )
@@ -2998,7 +3189,8 @@ StackEngine.prototype.exportParameters = function()
 
   Parameters.set( "integrate", this.integrate );
 
-  // Parameters.set( "frameGroups", this.framesGroupsToStringData() );
+  if ( SAVE_GROUPS )
+    Parameters.set( "frameGroups", this.framesGroupsToStringData() );
 
   // if ( this.exportCalibrationFiles )
   //   for ( var i = 0; i < this.frameGroups.length; ++i )
@@ -3157,11 +3349,13 @@ StackEngine.prototype.runDiagnostics = function()
           var haveFlats = false;
           for ( var j = 0; j < this.frameGroups.length; ++j )
             if ( this.frameGroups[ j ].imageType == ImageType.FLAT )
+            {
               if ( this.frameGroups[ j ].binning == binning && this.frameGroups[ j ].filter == filter )
               {
                 haveFlats = true;
                 break;
               }
+            }
           if ( !haveFlats )
             this.warning( "No flat frames have been selected to calibrate " + this.frameGroups[ i ].toString() );
         }
