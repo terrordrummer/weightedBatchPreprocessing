@@ -1642,7 +1642,7 @@ StackEngine.prototype.doFlat = function()
         var filePath = outputData[ c ][ 0 ]; // outputData.outputImage
         if ( !filePath.isEmpty() )
           if ( File.exists( filePath ) )
-            this.frameGroups[ i ].fileItems.push( new FileItem( filePath, 0 ) );
+            tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
           else
           {
             console.warningln( "** Warning: File does not exist after image calibration: " + filePath );
@@ -2047,7 +2047,7 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   {
     console.warningln( "** Warning: Cannot integrate less than three frames." );
     this.processLogger.addWarning( "Cannot integrate less than three frames." );
-    return;
+    return "";
   }
 
   console.noteln( "<end><cbr><br>",
@@ -3343,6 +3343,28 @@ StackEngine.prototype.runDiagnostics = function()
 
     if ( !this.hasFlatFrames() )
       this.warning( "No flat frames have been selected." );
+    else if ( this.flatDarksOnly )
+    {
+      for ( var i = 0; i < this.frameGroups.length; ++i )
+        if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
+        {
+          let binning = this.frameGroups[ i ].binning;
+          let exptime = this.frameGroups[ i ].exposureTime;
+
+          var haveDark = false;
+
+          for ( var j = 0; j < this.frameGroups.length; ++j )
+            if ( this.frameGroups[ j ].imageType == ImageType.DARK && this.frameGroups[ j ].binning == binning )
+              if ( this.frameGroups[ j ].exposureTime - exptime == 0 )
+              {
+                haveDark = true;
+                break;
+              }
+
+          if ( !haveDark )
+            this.warning( "No master dark found to calibrate " + this.frameGroups[ i ].toString() );
+        }
+    }
 
     if ( !this.hasLightFrames() )
       this.warning( "No light frames have been selected." );
