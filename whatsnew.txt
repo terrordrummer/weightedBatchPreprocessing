@@ -7,3 +7,4 @@
 - "auto" rejection option to select the best rejection strategy during integration
 - Smart naming: BINNING, FILTER and EXPTIME can be added to file names or including folder to provide these values when no proper keywords are stored into frame files
 - Flat frames are always calibrated with master bias if a matching master bias is provided
+- Smart reporting: summary of operations shown at the end of the process

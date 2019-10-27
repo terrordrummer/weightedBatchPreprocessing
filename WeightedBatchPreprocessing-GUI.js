@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-GUI.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.2
+// This file is part of Weighted Batch Preprocessing Script version 1.2.3
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -1757,7 +1757,6 @@ function FileControl( parent, imageType )
       this.darkExposureToleranceSpinBox.onValueUpdated = function( value )
       {
         engine.darkExposureTolerance = value;
-        engine.reconstructGroups();
         parent.dialog.refreshTreeBoxes();
       };
 
@@ -1834,7 +1833,6 @@ function FileControl( parent, imageType )
       this.groupLightsWithDifferentExposureCheckBox.onCheck = function( checked )
       {
         engine.groupLightsOfDifferentExposure = checked;
-        engine.reconstructGroups();
         parent.dialog.refreshTreeBoxes();
       };
 
@@ -2812,6 +2810,8 @@ StackDialog.prototype.updateControls = function()
 
 StackDialog.prototype.refreshTreeBoxes = function()
 {
+  engine.reconstructGroups();
+
   for ( var j = 0; j < this.tabBox.numberOfPages; ++j )
     this.tabBox.pageControlByIndex( j ).treeBox.clear();
 
@@ -2883,21 +2883,24 @@ StackDialog.prototype.refreshTreeBoxes = function()
         }
       }
 
-      let exposureTimesString = exposureTimes.length == 1 ? format( "%.2fs", exposureTimes[ 0 ] ) : "[" + exposureTimes.map( exp => format( "%.2fs", exp ) ).join( ' , ' ) + ']';
-      if ( !treeNode.hasOwnProperty( exposureTimesString ) )
+      if ( imageType !== ImageType.FLAT )
       {
+        let exposureTimesString = exposureTimes.length == 1 ? format( "%.2fs", exposureTimes[ 0 ] ) : "[" + exposureTimes.map( exp => format( "%.2fs", exp ) ).join( ' , ' ) + ']';
+        if ( !treeNode.hasOwnProperty( exposureTimesString ) )
+        {
 
-        node = new TreeBoxNode( node );
-        node.expanded = true;
-        node.setText( 0, exposureTimesString );
-        node.nodeData_type = "FrameGroup";
-        node.nodeData_index = i;
-        treeNode[ exposureTimesString ] = {};
-        treeNode[ exposureTimesString ].node = node;
-      }
-      else
-      {
-        node = treeNode[ exposureTimesString ].node;
+          node = new TreeBoxNode( node );
+          node.expanded = true;
+          node.setText( 0, exposureTimesString );
+          node.nodeData_type = "FrameGroup";
+          node.nodeData_index = i;
+          treeNode[ exposureTimesString ] = {};
+          treeNode[ exposureTimesString ].node = node;
+        }
+        else
+        {
+          node = treeNode[ exposureTimesString ].node;
+        }
       }
     }
 

@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-engine.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.2
+// This file is part of Weighted Batch Preprocessing Script version 1.2.3
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -55,7 +55,7 @@
 #include <pjsr/ColorSpace.jsh>
 #include <pjsr/StarDetector.jsh>
 #include "WeightedBatchPreprocessing-processLogger.js"
-#define SAVE_GROUPS true
+#define SAVE_GROUPS false
 /* beautify ignore:end */
 
 
@@ -111,7 +111,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
         return this.binning == binning && ( Math.abs( this.exposureTime - exposureTime ) <= exposureTolerance );
       case ImageType.FLAT:
       case ImageType.UNKNOWN:
-        return this.binning == binning && this.filter == filter && Math.abs( this.exposureTime - exposureTime ) <= 1e-3;
+        return this.binning == binning && this.filter == filter;
       case ImageType.LIGHT:
         return this.binning == binning && this.filter == filter && ( groupLightsOfDifferentExposure || ( !groupLightsOfDifferentExposure && Math.abs( this.exposureTime - exposureTime ) <= 1e-2 ) );
     }
@@ -201,6 +201,8 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
     var times = new Set( this.exposureTimes );
     if ( !times.has( time ) )
       this.exposureTimes.push( time );
+    if ( this.addExposureTime < time )
+      this.exposureTime = time;
   }
 
   this.exposuresToString = function()
@@ -3276,6 +3278,26 @@ StackEngine.prototype.exportParameters = function()
 
 StackEngine.prototype.runDiagnostics = function()
 {
+  this.bestDarkGroupByExposureTime = function( exposure )
+  {
+    var bestDifference = undefined;
+    var bestExposure = undefined;
+
+    for ( let i = 0; i < this.frameGroups.length; ++i )
+    {
+      if ( this.frameGroups[ i ].imageType == ImageType.DARK )
+        if ( bestDifference == undefined || Math.abs( this.frameGroups[ i ].exposureTime - exposure ) < bestDifference )
+        {
+          bestDifference = Math.abs( this.frameGroups[ i ].exposureTime - exposure )
+          bestExposure = this.frameGroups[ i ].exposureTime;
+        }
+    }
+    return {
+      difference: bestDifference,
+      exposure: bestExposure
+    }
+  }
+
   this.error = function( message )
   {
     this.diagnosticMessages.push( "*** Error: " + message );
@@ -3338,24 +3360,38 @@ StackEngine.prototype.runDiagnostics = function()
       }
     }
 
+    // add at least 1 group of frames
     if ( this.frameGroups.length == 0 )
       this.error( "No input frames have been specified." );
 
+    // BIAS, DARK and FLAT groups must have at least 3 frames
+    // LIGHT group must have at least 3 frames if calibrate only is false
     for ( var i = 0; i < this.frameGroups.length; ++i )
-      if ( !this.useAsMaster[ this.frameGroups[ i ].imageType ] && this.frameGroups[ i ].fileItems.length < 3 )
-        this.error( "Cannot integrate less than 3 " + this.frameGroups[ i ].toString() );
+      if ( !this.useAsMaster[ this.frameGroups[ i ].imageType ] )
+      {
+        if ( this.frameGroups[ i ].imageType == ImageType.LIGHT && !this.calibrateOnly )
+        {
+          if ( this.frameGroups[ i ].fileItems.length < 3 )
+            this.error( "Cannot integrate less than 3 " + this.frameGroups[ i ].toString() );
+        }
+        else if ( this.frameGroups[ i ].fileItems.length < 3 )
+          this.error( "Cannot integrate less than 3 " + this.frameGroups[ i ].toString() );
+      }
 
+    // check input files existence
     for ( var i = 0; i < this.frameGroups.length; ++i )
       for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
         if ( !File.exists( this.frameGroups[ i ].fileItems[ j ].filePath ) )
           this.error( "Nonexistent input file: " + this.frameGroups[ i ].fileItems[ j ].filePath );
 
+    // warning: filter name clean up
     for ( var i = 0; i < this.frameGroups.length; ++i )
       if ( !this.frameGroups[ i ].filter.isEmpty() )
         if ( this.frameGroups[ i ].filter.cleanFilterName() != this.frameGroups[ i ].filter )
           this.warning( "Invalid file name characters will be replaced with underscores " +
             "in filter name: \'" + this.frameGroups[ i ].filter + "\'" );
 
+    // Cosmetic correction check
     if ( this.hasLightFrames() )
     {
       if ( this.cosmeticCorrection )
@@ -3385,6 +3421,7 @@ StackEngine.prototype.runDiagnostics = function()
         }
       }
 
+      // best reference frame checks
       if ( !this.calibrateOnly )
         if ( !this.useBestLightAsReference && this.referenceImage.isEmpty() )
           this.error( "No registration reference image has been specified." );
@@ -3402,33 +3439,61 @@ StackEngine.prototype.runDiagnostics = function()
       this.warning( "No flat frames have been selected." );
     else if ( this.flatDarksOnly )
     {
+      // flat calibration warnings
       for ( var i = 0; i < this.frameGroups.length; ++i )
-        if ( this.frameGroups[ i ].imageType == ImageType.FLAT )
+        if ( this.frameGroups[ i ].imageType == ImageType.FLAT && !this.useAsMaster[ this.frameGroups[ i ].imageType ] )
         {
           let binning = this.frameGroups[ i ].binning;
           let exptime = this.frameGroups[ i ].exposureTime;
 
           var haveDark = false;
+          var haveBias = false;
 
           for ( var j = 0; j < this.frameGroups.length; ++j )
+          {
             if ( this.frameGroups[ j ].imageType == ImageType.DARK && this.frameGroups[ j ].binning == binning )
               if ( this.frameGroups[ j ].exposureTime - exptime == 0 )
-              {
                 haveDark = true;
-                break;
-              }
+            if ( this.frameGroups[ j ].imageType == ImageType.BIAS && this.frameGroups[ j ].binning == binning )
+              haveBias = true;
+          }
 
-          if ( !haveDark )
-            this.warning( "No master dark found to calibrate " + this.frameGroups[ i ].toString() );
+          if ( !haveDark && !haveBias )
+            this.warning( "Neither master dark not master bias found to calibrate " + this.frameGroups[ i ].toString() );
+          else if ( haveBias && !haveDark )
+            this.warning( "Only master bias will be used to calibrate " + this.frameGroups[ i ].toString() );
         }
     }
+    else
+      for ( var i = 0; i < this.frameGroups.length; ++i )
+        if ( this.frameGroups[ i ].imageType == ImageType.FLAT && !this.useAsMaster[ this.frameGroups[ i ].imageType ] )
+        {
+          let bestDark = this.bestDarkGroupByExposureTime( this.frameGroups[ i ].exposureTimes );
+          if ( bestDark.difference !== undefined )
+            if ( bestDark.difference != 0 )
+              if ( this.optimizeDarks )
+                this.warning( this.frameGroups[ i ].toString() + ' will be calibrated by an OPTIMIZED master dark with a different exposure of ' + bestDark.exposure + ' sec. ' );
+              else
+                this.warning( this.frameGroups[ i ].toString() + ' will be calibrated by a master dark with a different exposure of ' + bestDark.exposure + ' sec.' );
+        }
 
     if ( !this.hasLightFrames() )
       this.warning( "No light frames have been selected." );
     else
+    {
       for ( var i = 0; i < this.frameGroups.length; ++i )
         if ( this.frameGroups[ i ].imageType == ImageType.LIGHT )
         {
+          // check darks for lights
+          let bestDark = this.bestDarkGroupByExposureTime( this.frameGroups[ i ].exposureTimes );
+          if ( bestDark.difference !== undefined )
+            if ( bestDark.difference != 0 )
+              if ( this.optimizeDarks )
+                this.warning( this.frameGroups[ i ].toString() + ' will be calibrated by an OPTIMIZED master dark with a different exposure of ' + bestDark.exposure + ' sec. ' );
+              else
+                this.warning( this.frameGroups[ i ].toString() + ' will be calibrated by a master dark with a different exposure of ' + bestDark.exposure + ' sec.' );
+
+          // check flats for lights
           var binning = this.frameGroups[ i ].binning;
           var filter = this.frameGroups[ i ].filter;
           var haveFlats = false;
@@ -3444,6 +3509,7 @@ StackEngine.prototype.runDiagnostics = function()
           if ( !haveFlats )
             this.warning( "No flat frames have been selected to calibrate " + this.frameGroups[ i ].toString() );
         }
+    }
 
     for ( var i = 0; i < this.frameGroups.length; ++i )
     {
