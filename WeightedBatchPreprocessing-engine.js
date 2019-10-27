@@ -2045,7 +2045,9 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
     frameSet.push( frameGroup.fileItems[ i ].filePath );
   if ( frameSet.length < 3 )
   {
-    frameGroup.warning( "Cannot integrate less than three frames." );
+    console.warningln( "** Warning: Cannot integrate less than three frames." );
+    this.processLogger.addWarning( "Cannot integrate less than three frames." );
+    return;
   }
 
   console.noteln( "<end><cbr><br>",
@@ -3281,6 +3283,10 @@ StackEngine.prototype.runDiagnostics = function()
 
     if ( this.frameGroups.length == 0 )
       this.error( "No input frames have been specified." );
+
+    for ( var i = 0; i < this.frameGroups.length; ++i )
+      if ( !this.useAsMaster[ this.frameGroups[ i ].imageType ] && this.frameGroups[ i ].fileItems.length < 3 )
+        this.error( "Cannot integrate less than 3 " + this.frameGroups[ i ].toString() );
 
     for ( var i = 0; i < this.frameGroups.length; ++i )
       for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
