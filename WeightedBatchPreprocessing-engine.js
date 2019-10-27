@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-engine.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.1
+// This file is part of Weighted Batch Preprocessing Script version 1.2.2
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -219,7 +219,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
     console.noteln( 'Exposure : ', this.exposuresToString() );
   }
 
-  this.logString = function()
+  this.logStringHeader = function()
   {
     let str = '<b>---------------------------------\n';
     str += 'Group of ' + this.fileItems.length + ' ' + StackEngine.imageTypeToString( this.imageType ) + ' frames\n';
@@ -227,11 +227,14 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
     if ( this.imageType != ImageType.BIAS && this.imageType != ImageType.DARK )
       str += 'Filter   : ' + this.filter.length > 0 ? this.filter : 'NoFilter' + '\n';
     if ( this.imageType != ImageType.BIAS )
-      str += 'Exposure : ' + this.exposuresToString() + '\n';
-    str += '---------------------------------</b>';
+      str += 'Exposure : ' + this.exposuresToString() + '</b>\n';
     return str;
   }
 
+  this.logStringFooter = function()
+  {
+    return '<b>---------------------------------</b>\n';
+  }
   this.toString = function()
   {
     var a = [];
@@ -588,21 +591,21 @@ function ProcessLogDialog( processLogger )
     this.dialog.ok();
   };
 
-  this.saveButton = new PushButton( this );
-  this.saveButton.defaultButton = true;
-  this.saveButton.text = "Save...";
-  this.saveButton.icon = this.scaledResource( ":/icons/cancel.png" );
-  this.saveButton.onClick = function()
-  {
-    // WRITE LOGS
-  };
+  // this.saveButton = new PushButton( this );
+  // this.saveButton.defaultButton = true;
+  // this.saveButton.text = "Save...";
+  // this.saveButton.icon = this.scaledResource( ":/icons/cancel.png" );
+  // this.saveButton.onClick = function()
+  // {
+  //   // WRITE LOGS
+  // };
 
   this.buttonsSizer = new HorizontalSizer;
   this.buttonsSizer.addStretch();
   this.buttonsSizer.add( this.okButton );
 
-  this.buttonsSizer.addSpacing( 8 );
-  this.buttonsSizer.add( this.saveButton );
+  // this.buttonsSizer.addSpacing( 8 );
+  // this.buttonsSizer.add( this.saveButton );
 
 
   this.sizer = new VerticalSizer;
@@ -1576,7 +1579,7 @@ StackEngine.prototype.doBias = function()
   for ( var i = 0; i < this.frameGroups.length; ++i )
     if ( this.frameGroups[ i ].imageType == ImageType.BIAS && !this.frameGroups[ i ].masterFrame )
     {
-      this.processLogger.addMessage( this.frameGroups[ i ].logString() );
+      this.processLogger.addMessage( this.frameGroups[ i ].logStringHeader() );
 
       var masterBiasPath = this.doIntegrate( this.frameGroups[ i ] );
       if ( masterBiasPath.isEmpty() )
@@ -1590,7 +1593,7 @@ StackEngine.prototype.doBias = function()
       this.frameGroups[ i ].fileItems.unshift( new FileItem( masterBiasPath, 0 ) );
       this.useAsMaster[ ImageType.BIAS ] = true;
       this.processLogger.addSuccess( "Integration OK", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
-      this.processLogger.newLine();
+      this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
       processEvents();
       gc();
     }
@@ -1601,7 +1604,7 @@ StackEngine.prototype.doDark = function()
   for ( var i = 0; i < this.frameGroups.length; ++i )
     if ( this.frameGroups[ i ].imageType == ImageType.DARK && !this.frameGroups[ i ].masterFrame )
     {
-      this.processLogger.addMessage( this.frameGroups[ i ].logString() );
+      this.processLogger.addMessage( this.frameGroups[ i ].logStringHeader() );
 
       var masterDarkPath = this.doIntegrate( this.frameGroups[ i ] );
       if ( masterDarkPath.isEmpty() )
@@ -1615,7 +1618,7 @@ StackEngine.prototype.doDark = function()
       this.frameGroups[ i ].fileItems.unshift( new FileItem( masterDarkPath, this.frameGroups[ i ].exposureTime ) );
       this.useAsMaster[ ImageType.DARK ] = true;
       this.processLogger.addSuccess( "Integration OK", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
-      this.processLogger.newLine();
+      this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
       processEvents();
       gc();
     }
@@ -1626,7 +1629,7 @@ StackEngine.prototype.doFlat = function()
   for ( var i = 0; i < this.frameGroups.length; ++i )
     if ( this.frameGroups[ i ].imageType == ImageType.FLAT && !this.frameGroups[ i ].masterFrame )
     {
-      this.processLogger.addMessage( this.frameGroups[ i ].logString() );
+      this.processLogger.addMessage( this.frameGroups[ i ].logStringHeader() );
 
       var outputData = this.doCalibrate( this.frameGroups[ i ] );
       if ( outputData == null )
@@ -1669,7 +1672,7 @@ StackEngine.prototype.doFlat = function()
       this.useAsMaster[ ImageType.FLAT ] = true;
       this.addFile( masterFlatPath, ImageType.FLAT );
       this.processLogger.addSuccess( "Integration OK", "master file " + masterFlatPath );
-      this.processLogger.newLine();
+      this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
       processEvents();
       gc();
     }
@@ -1699,6 +1702,9 @@ StackEngine.prototype.doLight = function()
   {
     if ( this.frameGroups[ i ].imageType == ImageType.LIGHT )
     {
+
+      this.processLogger.addMessage( this.frameGroups[ i ].logStringHeader() );
+
       var outputData = this.doCalibrate( this.frameGroups[ i ] )
       if ( outputData == null )
       {
@@ -1726,7 +1732,7 @@ StackEngine.prototype.doLight = function()
         this.processLogger.addWarning( "All calibrated light frame files have been removed or cannot be accessed." );
         return;
       }
-      this.processLogger.addMessage( "Calibration OK" );
+      this.processLogger.addSuccess( "Calibration OK" );
 
       if ( this.cosmeticCorrection )
       {
@@ -1794,7 +1800,7 @@ StackEngine.prototype.doLight = function()
           this.processLogger.addWarning( "All cosmetic corrected light frame files have been removed or cannot be accessed." );
           return;
         }
-        this.processLogger.addMessage( "Cosmetic Correction OK" );
+        this.processLogger.addSucccess( "Cosmetic Correction OK" );
 
         console.noteln( "<end><cbr><br>",
           "************************************************************" );
@@ -1851,7 +1857,8 @@ StackEngine.prototype.doLight = function()
           this.processLogger.addWarning( "All demosaiced light frame files for group with BINNING = ", this.frameGroups[ i ].binning, ", FILTER = ", this.frameGroups[ i ].filter, " and EXPOSURE = ", this.frameGroups[ i ].exposuresToString, " have been removed or cannot be accessed." );
           return;
         }
-        this.processLogger.addMessage( "Debayer OK" );
+        this.processLogger.addSuccess( "Debayer OK" );
+        this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
         images = debayerImages;
 
         console.noteln( "<end><cbr><br>",
@@ -1865,7 +1872,8 @@ StackEngine.prototype.doLight = function()
       processedImageGroup.binning = this.frameGroups[ i ].binning;
       processedImageGroup.exposureTime = this.frameGroups[ i ].exposureTime;
       processedImageGroup.exposureTimes = this.frameGroups[ i ].exposureTimes;
-      processedImageGroup.description = this.frameGroups[ i ].toString;
+      processedImageGroup.header = this.frameGroups[ i ].logStringHeader();
+      processedImageGroup.footer = this.frameGroups[ i ].logStringFooter();
       processedImageGroup.images = new Array;
       for ( var ii = 0; ii < images.length; ++ii )
         processedImageGroup.images.push( images[ ii ] );
@@ -1899,17 +1907,22 @@ StackEngine.prototype.doLight = function()
       console.noteln( "* End selection of the best reference frame for registration" );
       console.noteln( "************************************************************" );
       console.flush();
-      this.processLogger.addMessage( "Best reference frame for registration: " + actualReferenceImage );
+      this.processLogger.addSuccess( "Best reference frame for registration", actualReferenceImage );
+      this.processLogger.newLine();
     }
 
     if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration === false )
     {
       this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
-      this.processLogger.addMessage( "Weights stored into light frames" );
+      this.processLogger.addSuccess( "Frame weights computed and stored succesfully" );
+      this.processLogger.newLine();
     }
 
     for ( var p = 0; p < processedImageGroups.length; ++p )
     {
+
+      this.processLogger.addMessage( processedImageGroups[ p ].header );
+
       let filter = processedImageGroups[ p ].filter;
       let binning = processedImageGroups[ p ].binning;
       let exposureTime = processedImageGroups[ p ].exposureTime;
@@ -1961,6 +1974,7 @@ StackEngine.prototype.doLight = function()
       {
         console.warningln( " ** Warning: Error registering light frames." );
         this.processLogger.addWarning( "Error registering light frames." );
+        this.processLogger.addMessage( processedImageGroups[ p ].footer );
         return;
       }
 
@@ -1981,19 +1995,29 @@ StackEngine.prototype.doLight = function()
       if ( images.length < 1 )
       {
         console.warningln( " ** Warning: All registered light frame files have been removed or cannot be accessed." );
-        this.processLogger.addWarning( "All registered light frame files have been removed or cannot be accessed." );
+        this.processLogger.addError( "All registered light frame files have been removed or cannot be accessed." );
+        this.processLogger.addMessage( processedImageGroups[ p ].footer );
+        this.processLogger.newLine();
         return;
       }
       else if ( images.length < 3 )
       {
         let failed = preRegistrationImagesCount - images.length;
-        throw new Error( "Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, " provided. A minimum of 3 images must be succesfully registered." );
-        this.processLogger.addWarning( "All registered light frame files have been removed or cannot be accessed." );
-        returnl
+        console.warningln( " ** Warning: Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, " provided. A minimum of 3 images must be succesfully registered." );
+        this.processLogger.addError( "Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, " provided. A minimum of 3 images must be succesfully registered." );
+        this.processLogger.addMessage( processedImageGroups[ p ].footer );
+        this.processLogger.newLine();
+        return;
       }
       else if ( preRegistrationImagesCount - images.length > 0 )
       {
         console.warningln( "** Warning: failed to register " + ( preRegistrationImagesCount - images.length ) + " images out of " + preRegistrationImagesCount );
+        this.processLogger.addWarning( "Failed to register " + ( preRegistrationImagesCount - images.length ) + " images out of " + preRegistrationImagesCount );
+        this.processLogger.addSuccess( "Registration completed with warnings" );
+      }
+      else
+      {
+        this.processLogger.addSuccess( "Registration OK" );
       }
 
       console.noteln( "<end><cbr><br>",
@@ -2010,6 +2034,7 @@ StackEngine.prototype.doLight = function()
         imagesDescriptors[ 0 ] = desc.imagesDescriptors;
         imagesDescriptorsMinMax[ 0 ] = desc.imagesDescriptorsMinMax;
         this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
+        this.processLogger.addSuccess( "Frame weights computed and stored succesfully" );
       }
 
       if ( this.integrate )
@@ -2022,14 +2047,26 @@ StackEngine.prototype.doLight = function()
             if ( File.exists( filePath ) )
               tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
             else
+            {
               console.warningln( "** Warning: File does not exist after image registration: " + filePath );
+              this.processLogger.addWarning( "File does not exist after image registration: " + filePath );
+            }
         }
         if ( tmpGroup.fileItems.length < 1 )
-          throw new Error( "All registered light frame files have been removed or cannot be accessed." );
+        {
+          console.warningln( " ** Warning: All registered light frame files have been removed or cannot be accessed." );
+          this.processLogger.addError( "All registered light frame files have been removed or cannot be accessed." );
+        }
         var masterLightPath = this.doIntegrate( tmpGroup );
         if ( masterLightPath.isEmpty() )
-          throw new Error( "Error integrating light frames." );
+        {
+          console.warningln( " ** Warning: Error integrating light frames." );
+          this.processLogger.addError( "Error integrating light frames." );
+        }
+        else
+          this.processLogger.addSuccess( "Integration OK", "master light: " + masterLightPath );
       }
+      this.processLogger.addMessage( processedImageGroups[ p ].footer );
     }
   }
 
@@ -2059,11 +2096,14 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
 
   let selectedRejection = this.rejection[ imageType ] <= ImageIntegration.prototype.LinearFit ? this.rejection[ imageType ] : frameGroup.bestRejectionMethod();
 
-  console.noteln( 'Rejection method ', RejectionToString( this.rejection[ imageType ] ) );
-
   if ( this.rejection[ imageType ] > ImageIntegration.prototype.LinearFit )
   {
     console.noteln( 'Rejection method auto-selected: ', RejectionToString( selectedRejection ) );
+    this.processLogger.addMessage( 'Rejection method auto-selected: ' + RejectionToString( selectedRejection ) );
+  }
+  else
+  {
+    console.noteln( 'Rejection method ', RejectionToString( selectedRejection ) );
   }
   var II = new ImageIntegration;
 
@@ -2461,12 +2501,29 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
       IC.outputDirectory = File.existingDirectory( this.outputDirectory + "/calibrated/light" );
     }
 
+    this.processLogger.addMessage( "[Calibration data]" );
     if ( IC.masterBiasEnabled )
+    {
       console.noteln( "* Master bias: " + IC.masterBiasPath );
+      this.processLogger.addMessage( "  Master bias: " + IC.masterBiasPath );
+    }
+    else
+      this.processLogger.addMessage( "  Master bias: none" );
     if ( IC.masterDarkEnabled )
+    {
       console.noteln( "* Master dark: " + IC.masterDarkPath );
+      this.processLogger.addMessage( "  Master dark: " + IC.masterDarkPath );
+    }
+    else
+      this.processLogger.addMessage( "  Master dark: none" );
     if ( IC.masterFlatEnabled )
+    {
       console.noteln( "* Master flat: " + IC.masterFlatPath );
+      this.processLogger.addMessage( "  Master flat: " + IC.masterFlatPath );
+    }
+    else
+      this.processLogger.addMessage( "  Master flat: none" );
+
 
     var ok = IC.executeGlobal();
 
