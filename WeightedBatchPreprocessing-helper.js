@@ -324,12 +324,29 @@ if ( !File.loadFITSKeywords )
  */
 File.getExposureTimeFromPath = function( filePath )
 {
+  // match the format EXPTIME_10.0 or EXPOSURE_2
   var regexp = /(EXPTIME|EXPOSURE)(_|-)[0-9]+(\.[0-9]*)?/gm;
   let matches = regexp.exec( filePath );
-  if ( matches === null )
-    return 0;
-  let value = Number( matches[ 0 ].split( '_' )[ 1 ] )
-  return value !== NaN ? value : 0
+  if ( matches !== null )
+  {
+    let value = Number( matches[ 0 ].split( '_' )[ 1 ] )
+    return value !== NaN ? value : 0
+  }
+  // find any number followed by 's' or 'sec' ore '_secs' like 2s, 2.1_secs or 2.2sec
+  let postfixes = [ 's', 'sec', '_secs' ];
+  regexp = /[0-9]+(\.[0-9]*)?(?=(s|sec|_secs)[^a-zA-Z0-9])/gm;
+  let matches = regexp.exec( filePath );
+  if ( matches !== null )
+  {
+    let sanitizedStr = matches[ 0 ];
+    postfixes.forEach( postfix =>
+    {
+      sanitizedStr = sanitizedStr.replace( postfix, '' );
+    } )
+    let value = Number( sanitizedStr );
+    return value !== NaN ? value : 0
+  }
+  return 0;
 }
 
 /*
