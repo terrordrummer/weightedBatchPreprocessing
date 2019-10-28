@@ -2883,25 +2883,26 @@ StackDialog.prototype.refreshTreeBoxes = function()
         }
       }
 
-      if ( imageType !== ImageType.FLAT )
+      // if ( imageType !== ImageType.FLAT )
+      // {
+      let exposureTimesString = frameGroup.exposuresToString();
+      if ( !treeNode.hasOwnProperty( exposureTimesString ) )
       {
-        let exposureTimesString = exposureTimes.length == 1 ? format( "%.2fs", exposureTimes[ 0 ] ) : "[" + exposureTimes.map( exp => format( "%.2fs", exp ) ).join( ' , ' ) + ']';
-        if ( !treeNode.hasOwnProperty( exposureTimesString ) )
-        {
 
-          node = new TreeBoxNode( node );
-          node.expanded = true;
-          node.setText( 0, exposureTimesString );
-          node.nodeData_type = "FrameGroup";
-          node.nodeData_index = i;
-          treeNode[ exposureTimesString ] = {};
-          treeNode[ exposureTimesString ].node = node;
-        }
-        else
-        {
-          node = treeNode[ exposureTimesString ].node;
-        }
+        node = new TreeBoxNode( node );
+        node.expanded = true;
+        node.setText( 0, frameGroup.exposuresToExtendedString() );
+        node.useRichText = true;
+        node.nodeData_type = "FrameGroup";
+        node.nodeData_index = i;
+        treeNode[ exposureTimesString ] = {};
+        treeNode[ exposureTimesString ].node = node;
       }
+      else
+      {
+        node = treeNode[ exposureTimesString ].node;
+      }
+      // }
     }
 
     let rootNode = node;
