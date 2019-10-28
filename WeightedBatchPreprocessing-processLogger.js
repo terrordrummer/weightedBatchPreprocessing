@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-processLogger.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.3
+// This file is part of Weighted Batch Preprocessing Script version 1.2.4
 //
 // Copyright (c) 2018 Roberto Sartori
 // Copyright (c) 2012-2019 Pleiades Astrophoto S.L.
