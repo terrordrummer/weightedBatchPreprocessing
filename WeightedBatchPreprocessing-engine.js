@@ -116,7 +116,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
       case ImageType.UNKNOWN:
         return this.binning == binning && this.filter == filter;
       case ImageType.LIGHT:
-        return this.binning == binning && this.filter == filter && ( groupLightsOfDifferentExposure || ( !groupLightsOfDifferentExposure && Math.abs( this.exposureTime - exposureTime ) <= 1e-2 ) );
+        return this.binning == binning && this.filter == filter && ( groupLightsOfDifferentExposure || ( !groupLightsOfDifferentExposure && Math.abs( this.exposureTime - exposureTime ) <= 0.5 ) );
     }
     return false;
   }
