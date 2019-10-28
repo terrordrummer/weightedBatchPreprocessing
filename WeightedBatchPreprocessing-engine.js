@@ -62,12 +62,15 @@
 
 // ----------------------------------------------------------------------------
 
-function FileItem( filePath, exposureTime )
+function FileItem( filePath, imageType, filter, binning, exposureTime )
 {
   this.__base__ = Object;
   this.__base__();
 
   this.filePath = filePath;
+  this.imageType = imageType;
+  this.binning = binning;
+  this.filter = filter;
   this.exposureTime = exposureTime;
   this.enabled = true;
 }
@@ -779,9 +782,10 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
   if ( !forcedType )
     imageType = ImageType.UNKNOWN;
 
+  if ( filter == "?" )
+    filter = undefined;
   var forcedFilter = filter != undefined && filter != "?"; // ### see Add Custom Frames dialog
-  if ( !forcedFilter || filter == "?" )
-    filter = "NoFilter";
+
 
   var forcedBinning = binning != undefined && binning > 0;
   if ( !forcedBinning )
@@ -867,7 +871,7 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
   // smart naming: extract binning, filter and duration from filePath
   if ( !forcedBinning && binning == 1 )
     binning = File.getBinningFromPath( filePath );
-  if ( !forcedFilter && filter == "" )
+  if ( !forcedFilter && filter == undefined )
     filter = File.getFilterFromPath( filePath );
   if ( !forcedExposureTime && imageType !== ImageType.BIAS && exposureTime == 0 )
     exposureTime = File.getExposureTimeFromPath( filePath );
@@ -886,7 +890,7 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
       break;
   }
 
-  var item = new FileItem( filePath, exposureTime );
+  var item = new FileItem( filePath, imageType, filter ? filter : "NoFilter", binning, exposureTime );
 
   if ( this.frameGroups.length > 0 )
   {
@@ -967,29 +971,34 @@ StackEngine.prototype.deleteFrameSet = function( imageType )
 
 StackEngine.prototype.reconstructGroups = function()
 {
-  // flatten image
-  var filesContainer = [];
-  let types = [ ImageType.UNKNOWN, ImageType.BIAS, ImageType.DARK, ImageType.FLAT, ImageType.LIGHT ];
-
-  for ( var i = 0; i < types.length; ++i )
-    filesContainer[ types[ i ] ] = [];
+  // flatten existing file containers, clean groups and readd all
+  var fileItems = [];
 
   for ( var i = 0; i < this.frameGroups.length; ++i )
     for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
-      filesContainer[ this.frameGroups[ i ].imageType ].push( this.frameGroups[ i ].fileItems[ j ].filePath );
+      fileItems.push(
+      {
+        filePath: this.frameGroups[ i ].fileItems[ j ].filePath,
+        imageType: this.frameGroups[ i ].fileItems[ j ].imageType,
+        binning: this.frameGroups[ i ].fileItems[ j ].binning,
+        filter: this.frameGroups[ i ].fileItems[ j ].filter,
+        exposureTime: this.frameGroups[ i ].fileItems[ j ].exposureTime
+      } );
 
+  let types = [ ImageType.UNKNOWN, ImageType.BIAS, ImageType.DARK, ImageType.FLAT, ImageType.LIGHT ];
   for ( var i = 0; i < types.length; ++i )
     this.deleteFrameSet( types[ i ] );
 
-  for ( var i = 0; i < types.length; ++i )
-    for ( var j = 0; j < filesContainer[ types[ i ] ].length; ++j )
-      this.addFile( filesContainer[ types[ i ] ][ j ], types[ i ] );
+  for ( var i = 0; i < fileItems.length; ++i )
+    for ( var j = 0; j < fileItems.length; ++j )
+      this.addFile( fileItems[ i ].filePath, fileItems[ i ].imageType, fileItems[ i ].filter, fileItems[ i ].binning, fileItems[ i ].exposureTime );
 
   // sort by BINNING, FILTER and EXPOSURE
   this.frameGroups.sort( ( a, b ) =>
   {
+    console.writeln( 'a.filter ', a.filter, ', b.filter', b.filter );
     if ( a.binning != b.binning ) return a.binning > b.binning;
-    if ( a.filter != b.filter ) return a.filter.toUpperCase() > b.filter.toUpperCase();
+    if ( a.filter != b.filter ) return a.filter.toLowerCase() > b.filter.toLowerCase();
     return a.exposureTime < b.exposureTime;
   } );
 }
@@ -1611,7 +1620,7 @@ StackEngine.prototype.doBias = function()
       }
 
       this.frameGroups[ i ].masterFrame = true;
-      this.frameGroups[ i ].fileItems.unshift( new FileItem( masterBiasPath, 0 ) );
+      this.frameGroups[ i ].fileItems.unshift( new FileItem( masterBiasPath, ImageType.BIAS, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, this.frameGroups[ i ].exposureTime ) );
       this.useAsMaster[ ImageType.BIAS ] = true;
       this.processLogger.addSuccess( "Integration OK", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
       this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
@@ -1636,7 +1645,7 @@ StackEngine.prototype.doDark = function()
       }
 
       this.frameGroups[ i ].masterFrame = true;
-      this.frameGroups[ i ].fileItems.unshift( new FileItem( masterDarkPath, this.frameGroups[ i ].exposureTime ) );
+      this.frameGroups[ i ].fileItems.unshift( new FileItem( masterDarkPath, ImageType.DARK, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, this.frameGroups[ i ].exposureTime ) );
       this.useAsMaster[ ImageType.DARK ] = true;
       this.processLogger.addSuccess( "Integration OK", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
       this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
@@ -1666,7 +1675,7 @@ StackEngine.prototype.doFlat = function()
         var filePath = outputData[ c ][ 0 ]; // outputData.outputImage
         if ( !filePath.isEmpty() )
           if ( File.exists( filePath ) )
-            tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
+            tmpGroup.fileItems.push( new FileItem( filePath, ImageType.FLAT, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, this.frameGroups[ i ].exposureTime ) );
           else
           {
             console.warningln( "** Warning: File does not exist after image calibration: " + filePath );
@@ -2066,7 +2075,7 @@ StackEngine.prototype.doLight = function()
           var filePath = images[ c ]; // outputData.outputImage
           if ( !filePath.isEmpty() )
             if ( File.exists( filePath ) )
-              tmpGroup.fileItems.push( new FileItem( filePath, 0 ) );
+              tmpGroup.fileItems.push( new FileItem( filePath, ImageType.LIGHT, filter, binning, exposureTime ) );
             else
             {
               console.warningln( "** Warning: File does not exist after image registration: " + filePath );
@@ -2305,7 +2314,7 @@ StackEngine.prototype.getMasterDarkFrame = function( binning, exposureTime, find
         if ( this.frameGroups[ i ].binning == binning )
         {
           var d = Math.abs( this.frameGroups[ i ].exposureTime - exposureTime );
-          if ( !findExactExposureTime && d < bestSoFar || findExactExposureTime && d == 0 )
+          if ( !findExactExposureTime && d < bestSoFar || findExactExposureTime && d < DEFAULT_FLAT_DARK_TOLERANCE )
           {
             frame = this.frameGroups[ i ].fileItems[ 0 ].filePath;
             foundTime = this.frameGroups[ i ].exposureTime;
@@ -3471,7 +3480,7 @@ StackEngine.prototype.runDiagnostics = function()
           for ( var j = 0; j < this.frameGroups.length; ++j )
           {
             if ( this.frameGroups[ j ].imageType == ImageType.DARK && this.frameGroups[ j ].binning == binning )
-              if ( this.frameGroups[ j ].exposureTime - exptime == 0 )
+              if ( Math.abs( this.frameGroups[ j ].exposureTime - exptime ) < DEFAULT_FLAT_DARK_TOLERANCE )
                 haveDark = true;
             if ( this.frameGroups[ j ].imageType == ImageType.BIAS && this.frameGroups[ j ].binning == binning )
               haveBias = true;
