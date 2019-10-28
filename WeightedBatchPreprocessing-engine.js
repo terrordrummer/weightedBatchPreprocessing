@@ -84,11 +84,6 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   this.__base__ = Object;
   this.__base__();
 
-  if ( filter == undefined )
-  {
-    console.warningln( "UNDEFINED filter prop" );
-  }
-
   this.imageType = imageType;
   this.filter = ( imageType == ImageType.BIAS || imageType == ImageType.DARK ) ? "" : filter;
   this.binning = binning;
