@@ -2441,13 +2441,13 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
           "************************************************************" );
         console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
         console.noteln( "************************************************************" );
-        frameGroup.addWarning( "neither master provided nor master dark matching the exposure has been found" )
+        this.processLogger.addWarning( "neither master provided nor master dark matching the exposure has been found" )
         return retVal;
       }
       else if ( masterBiasEnabled )
       {
         console.noteln( "<end><cbr><br>* " + StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
-        frameGroup.addWarning( StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
+        this.processLogger.addWarning( StackEngine.imageTypeToString( imageType ) + " frames will be calibrated only with master bias -- no master dark matching the exposure has been found" );
       }
     }
 
