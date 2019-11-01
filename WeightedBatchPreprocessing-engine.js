@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-engine.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.4
+// This file is part of Weighted Batch Preprocessing Script version 1.2.5
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -55,7 +55,7 @@
 #include <pjsr/ColorSpace.jsh>
 #include <pjsr/StarDetector.jsh>
 #include "WeightedBatchPreprocessing-processLogger.js"
-#define SAVE_GROUPS false
+#define SAVE_GROUPS true
 /* beautify ignore:end */
 
 
@@ -349,27 +349,9 @@ function StackEngine()
 
   this.diagnosticMessages = new Array;
 
-  this.frameGroups = DEFAULT_FRAME_GROUPS;
-
-  // General options
-  this.outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
-  this.cfaImages = DEFAULT_CFA_IMAGES;
-  this.upBottomFITS = DEFAULT_UP_BOTTOM_FITS;
-  this.exportCalibrationFiles = DEFAULT_EXPORT_CALIBRATION_FILES;
-  this.saveProcessLog = DEFAULT_SAVE_PROCESS_LOG;
-  this.generateRejectionMaps = DEFAULT_GENERATE_REJECTION_MAPS;
+  // allocate structures
   this.useAsMaster = new Array( 3 );
-
-  // Calibration parameters
-  this.optimizeDarks = DEFAULT_OPTIMIZE_DARKS;
-  this.darkOptimizationThreshold = 0; // ### deprecated - retained for compatibility
-  this.darkOptimizationLow = DEFAULT_DARK_OPTIMIZATION_LOW; // in sigma units from the central value
-  this.darkOptimizationWindow = DEFAULT_DARK_OPTIMIZATION_WINDOW;
-  this.darkExposureTolerance = DEFAULT_DARK_EXPOSURE_TOLERANCE; // in seconds
   this.overscan = new Overscan;
-  this.evaluateNoise = DEFAULT_EVALUATE_NOISE;
-
-  // Image integration parameters
   this.combination = new Array( 4 );
   this.rejection = new Array( 4 );
   this.minMaxLow = new Array( 4 );
@@ -380,45 +362,9 @@ function StackEngine()
   this.sigmaHigh = new Array( 4 );
   this.linearFitLow = new Array( 4 );
   this.linearFitHigh = new Array( 4 );
-  this.flatsLargeScaleRejection = DEFAULT_FLATS_LARGE_SCALE_REJECTION;
-  this.flatsLargeScaleRejectionLayers = DEFAULT_FLATS_LARGE_SCALE_LAYERS;
-  this.flatsLargeScaleRejectionGrowth = DEFAULT_FLATS_LARGE_SCALE_GROWTH;
 
-  // DarkFlat calibration
-  this.flatDarksOnly = DEFAULT_FLAT_DARKS_ONLY;
-
-  // Cosmetic correction
-  this.cosmeticCorrection = DEFAULT_COSMETIC_CORRECTION;
-  this.cosmeticCorrectionTemplateId = DEFAULT_COSMETIC_CORRECTION_TEMPLATE; // id of a CC instance
-
-  this.calibrateOnly = DEFAULT_CALIBRATE_ONLY; // skip the registration and integration tasks
-  this.generateDrizzleData = DEFAULT_GENERATE_DRIZZLE_DATA; // generate .xdrz files in the registration task
-
-  // Debayering options (only when cfaImages=true)
-  this.bayerPattern = DEFAULT_CFA_PATTERN;
-  this.debayerMethod = DEFAULT_DEBAYER_METHOD;
-
-  // Subframe Weightings options
-  this.subframeWeightingPreset = DEFAULT_SUBFRAMEWEIGHTING_PRESET;
-  this.generateSubframesWeights = DEFAULT_SUBFRAMEWEIGHTING_GENERATE;
-  this.generateSubframesWeightsAfterRegistration = DEFAULT_SUBFRAMEWEIGHTING_GENERATE_AFTER_REGISTRATION;
-  this.useBestLightAsReference = DEFAULT_SUBFRAMEWEIGHTING_BEST_REFERENCE;
-  this.FWHMWeight = DEFAULT_SUBFRAMEWEIGHTING_FWHM_WEIGHT;
-  this.eccentricityWeight = DEFAULT_SUBFRAMEWEIGHTING_ECCENTRICITY_WEIGHT;
-  this.SNRWeight = DEFAULT_SUBFRAMEWEIGHTING_SNR_WEIGHT;
-  this.pedestal = DEFAULT_SUBFRAMEWEIGHTING_PEDESTAL;
-
-  // Registration parameters
-  this.pixelInterpolation = DEFAULT_SA_PIXEL_INTERPOLATION;
-  this.clampingThreshold = DEFAULT_SA_CLAMPING_THRESHOLD;
-  this.maxStars = DEFAULT_SA_MAX_STARS;
-  this.distortionCorrection = DEFAULT_SA_DISTORTION_CORRECTION;
-  this.noiseReductionFilterRadius = DEFAULT_SA_NOISE_REDUCTION;
-  this.useTriangleSimilarity = DEFAULT_SA_USE_TRIANGLE_SIMILARITY;
-  this.referenceImage = ""; // registration reference image / CSV star list
-
-  // Light integration parameters
-  this.integrate = DEFAULT_INTEGRATE;
+  // default parameters
+  setDefaultParameters.apply( this );
 
   // process logger
   this.processLogger = new ProcessLogger();
@@ -2119,9 +2065,9 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
 
   frameGroup.log();
 
-  let selectedRejection = this.rejection[ imageType ] <= ImageIntegration.prototype.LinearFit ? this.rejection[ imageType ] : frameGroup.bestRejectionMethod();
+  let selectedRejection = this.rejection[ imageType ] == -1 ? frameGroup.bestRejectionMethod() : this.rejection[ imageType ];
 
-  if ( this.rejection[ imageType ] > ImageIntegration.prototype.LinearFit )
+  if ( this.rejection[ imageType ] == -1 )
   {
     console.noteln( 'Rejection method auto-selected: ', RejectionToString( selectedRejection ) );
     this.processLogger.addMessage( 'Rejection method auto-selected: ' + RejectionToString( selectedRejection ) );
@@ -2309,7 +2255,7 @@ StackEngine.prototype.getMasterDarkFrame = function( binning, exposureTime, find
         if ( this.frameGroups[ i ].binning == binning )
         {
           var d = Math.abs( this.frameGroups[ i ].exposureTime - exposureTime );
-          if ( !findExactExposureTime && d < bestSoFar || findExactExposureTime && d < DEFAULT_FLAT_DARK_TOLERANCE )
+          if ( !findExactExposureTime && d < bestSoFar || findExactExposureTime && d < CONST_FLAT_DARK_TOLERANCE )
           {
             frame = this.frameGroups[ i ].fileItems[ 0 ].filePath;
             foundTime = this.frameGroups[ i ].exposureTime;
@@ -2849,6 +2795,12 @@ StackEngine.prototype.saveSettings = function()
 
 StackEngine.prototype.setDefaultParameters = function()
 {
+  setDefaultParameters.apply( this );
+}
+
+function setDefaultParameters()
+{
+  // General options
   this.outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
   this.cfaImages = DEFAULT_CFA_IMAGES;
   this.upBottomFITS = DEFAULT_UP_BOTTOM_FITS;
@@ -2856,14 +2808,23 @@ StackEngine.prototype.setDefaultParameters = function()
   this.saveProcessLog = DEFAULT_SAVE_PROCESS_LOG;
   this.generateRejectionMaps = DEFAULT_GENERATE_REJECTION_MAPS;
 
+  // Calibration parameters
   this.optimizeDarks = DEFAULT_OPTIMIZE_DARKS;
-  this.darkOptimizationThreshold = 0;
-  this.darkOptimizationLow = DEFAULT_DARK_OPTIMIZATION_LOW;
+  this.darkOptimizationThreshold = 0; // ### deprecated - retained for compatibility
+  this.darkOptimizationLow = DEFAULT_DARK_OPTIMIZATION_LOW; // in sigma units from the central value
   this.darkOptimizationWindow = DEFAULT_DARK_OPTIMIZATION_WINDOW;
-  this.darkExposureTolerance = DEFAULT_DARK_EXPOSURE_TOLERANCE;
-
+  this.darkExposureTolerance = DEFAULT_DARK_EXPOSURE_TOLERANCE; // in seconds
   this.evaluateNoise = DEFAULT_EVALUATE_NOISE;
 
+  // Image integration parameters
+  this.flatsLargeScaleRejection = DEFAULT_FLATS_LARGE_SCALE_REJECTION;
+  this.flatsLargeScaleRejectionLayers = DEFAULT_FLATS_LARGE_SCALE_LAYERS;
+  this.flatsLargeScaleRejectionGrowth = DEFAULT_FLATS_LARGE_SCALE_GROWTH;
+
+  // DarkFlat calibration
+  this.flatDarksOnly = DEFAULT_FLAT_DARKS_ONLY;
+
+  // Overscan
   this.overscan.enabled = false;
   for ( var i = 0; i < 4; ++i )
   {
@@ -2877,7 +2838,7 @@ StackEngine.prototype.setDefaultParameters = function()
   {
     this.useAsMaster[ i ] = false;
     this.combination[ i ] = ImageIntegration.prototype.Average;
-    this.rejection[ i ] = ImageIntegration.prototype.WinsorizedSigmaClip;
+    this.rejection[ i ] = DEFAULT_REJECTION_METHOD;
     this.minMaxLow[ i ] = 1;
     this.minMaxHigh[ i ] = 1;
     this.percentileLow[ i ] = 0.2;
@@ -2888,16 +2849,12 @@ StackEngine.prototype.setDefaultParameters = function()
     this.linearFitHigh[ i ] = 3.5;
   }
 
-  this.flatsLargeScaleRejection = DEFAULT_FLATS_LARGE_SCALE_REJECTION;
-  this.flatsLargeScaleRejectionLayers = DEFAULT_FLATS_LARGE_SCALE_LAYERS;
-  this.flatsLargeScaleRejectionGrowth = DEFAULT_FLATS_LARGE_SCALE_GROWTH;
-
-  this.flatDarksOnly = DEFAULT_FLAT_DARKS_ONLY;
-
+  // Light
   this.calibrateOnly = DEFAULT_CALIBRATE_ONLY;
   this.groupLightsOfDifferentExposure = DEFAULT_GROUP_LIGHTS_WITH_DIFFERENT_EXPOSURE;
   this.generateDrizzleData = DEFAULT_GENERATE_DRIZZLE_DATA;
 
+  // Cosmetic correction
   this.cosmeticCorrection = DEFAULT_COSMETIC_CORRECTION;
   this.cosmeticCorrectionTemplateId = DEFAULT_COSMETIC_CORRECTION_TEMPLATE;
 
@@ -3475,7 +3432,7 @@ StackEngine.prototype.runDiagnostics = function()
           for ( var j = 0; j < this.frameGroups.length; ++j )
           {
             if ( this.frameGroups[ j ].imageType == ImageType.DARK && this.frameGroups[ j ].binning == binning )
-              if ( Math.abs( this.frameGroups[ j ].exposureTime - exptime ) < DEFAULT_FLAT_DARK_TOLERANCE )
+              if ( Math.abs( this.frameGroups[ j ].exposureTime - exptime ) < CONST_FLAT_DARK_TOLERANCE )
                 haveDark = true;
             if ( this.frameGroups[ j ].imageType == ImageType.BIAS && this.frameGroups[ j ].binning == binning )
               haveBias = true;

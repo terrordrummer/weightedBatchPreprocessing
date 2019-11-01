@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-global.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.4
+// This file is part of Weighted Batch Preprocessing Script version 1.2.5
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -57,7 +57,7 @@
 
 /* beautify ignore:start */
 
-#define VERSION "1.2.4"
+#define VERSION "1.2.5"
 
 #define TITLE "Weighted Batch Preprocessing Script"
 
@@ -78,33 +78,40 @@ var ImageType = {
 #define DEFAULT_EXPORT_CALIBRATION_FILES              true
 #define DEFAULT_SAVE_PROCESS_LOG                      true
 #define DEFAULT_GENERATE_REJECTION_MAPS               true
-#define DEFAULT_INTEGRATE                             true
-#define DEFAULT_DARK_OPTIMIZATION_WINDOW              1024
-#define DEFAULT_DARK_EXPOSURE_TOLERANCE               10
-#define DEFAULT_CFA_PATTERN                           Debayer.prototype.Auto
-#define DEFAULT_DEBAYER_METHOD                        Debayer.prototype.VNG
+
 #define DEFAULT_OPTIMIZE_DARKS                        true
 #define DEFAULT_DARK_OPTIMIZATION_LOW                 3.0
+#define DEFAULT_DARK_OPTIMIZATION_WINDOW              1024
+#define DEFAULT_DARK_EXPOSURE_TOLERANCE               10
+
 #define DEFAULT_EVALUATE_NOISE                        true
+
+#define DEFAULT_REJECTION_METHOD                      ImageIntegration.prototype.LinearFit + 1  // auto
+
+#define DEFAULT_FLAT_DARKS_ONLY                       true
 #define DEFAULT_FLATS_LARGE_SCALE_REJECTION           false
 #define DEFAULT_FLATS_LARGE_SCALE_LAYERS              2
 #define DEFAULT_FLATS_LARGE_SCALE_GROWTH              2
-#define DEFAULT_FLAT_DARKS_ONLY                       true
-#define DEFAULT_COSMETIC_CORRECTION                   false
-#define DEFAULT_COSMETIC_CORRECTION_TEMPLATE          ""
+
 #define DEFAULT_CALIBRATE_ONLY                        false
 #define DEFAULT_GROUP_LIGHTS_WITH_DIFFERENT_EXPOSURE  false
 #define DEFAULT_GENERATE_DRIZZLE_DATA                 true
+
+#define DEFAULT_COSMETIC_CORRECTION                   false
+#define DEFAULT_COSMETIC_CORRECTION_TEMPLATE          ""
+
+#define DEFAULT_CFA_PATTERN                           Debayer.prototype.Auto
+#define DEFAULT_DEBAYER_METHOD                        Debayer.prototype.VNG
+
 #define DEFAULT_SUBFRAMEWEIGHTING_PRESET              1
 #define DEFAULT_SUBFRAMEWEIGHTING_GENERATE            false
 #define DEFAULT_SUBFRAMEWEIGHTING_GENERATE_AFTER_REGISTRATION false
 #define DEFAULT_SUBFRAMEWEIGHTING_BEST_REFERENCE              false
+
 #define DEFAULT_SUBFRAMEWEIGHTING_FWHM_WEIGHT                 5
 #define DEFAULT_SUBFRAMEWEIGHTING_ECCENTRICITY_WEIGHT         10
 #define DEFAULT_SUBFRAMEWEIGHTING_SNR_WEIGHT                  20
 #define DEFAULT_SUBFRAMEWEIGHTING_PEDESTAL                    65
-
-#define DEFAULT_FLAT_DARK_TOLERANCE 0.5
 
 #define DEFAULT_SA_PIXEL_INTERPOLATION      StarAlignment.prototype.Auto
 #define DEFAULT_SA_CLAMPING_THRESHOLD       0.3
@@ -113,7 +120,13 @@ var ImageType = {
 #define DEFAULT_SA_NOISE_REDUCTION          0
 #define DEFAULT_SA_USE_TRIANGLE_SIMILARITY  true
 
+#define DEFAULT_INTEGRATE true
+
 #define DEFAULT_FRAME_GROUPS []
+
+// CONSTANTS
+
+#define CONST_FLAT_DARK_TOLERANCE 0.5
 
 /* beautify ignore:end */
 

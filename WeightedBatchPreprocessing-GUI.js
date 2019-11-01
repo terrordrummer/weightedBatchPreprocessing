@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-GUI.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.2.4
+// This file is part of Weighted Batch Preprocessing Script version 1.2.5
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -1513,6 +1513,7 @@ function SubframesWeightingControl( parent )
 
   this.updateControls = function()
   {
+    console.writeln( 'WEIGHT CONTROLS:', engine.generateSubframesWeights, engine.useBestLightAsReference, engine.generateSubframesWeightsAfterRegistration );
     this.subframesWeightCheckBox.checked = engine.generateSubframesWeights;
     this.subframesWeightUseBestReferenceCheckBox.checked = engine.useBestLightAsReference;
     this.subframesWeightAfterRegistrationCheckBox.checked = engine.generateSubframesWeightsAfterRegistration;
@@ -2642,6 +2643,7 @@ function StackDialog()
 
   this.referenceImageControl = new ParametersControl( "Registration Reference Image", this );
   this.referenceImageControl.add( this.referenceImageSizer );
+  this.referenceImageControl.ebabled = !engine.useBestLightAsReference;
 
   //
 
@@ -2785,6 +2787,8 @@ StackDialog.prototype.updateControls = function()
         page.deBayeringControl.updateControls();
         page.lightsRegistrationControl.updateControls();
         page.imageRegistrationControl.updateControls();
+        page.subframesWeightingControl.updateControls();
+        page.subframesWeightsEditControl.updateControls();
         page.lightsIntegrationControl.updateControls();
         page.imageIntegrationControl.updateControls();
         break;
