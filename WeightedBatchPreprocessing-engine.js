@@ -790,26 +790,16 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
           exposureTime = info[ 0 ].exposure;
   }
 
+  // smart naming: extract type binning, filter and duration from filePath if needed
+  if ( imageType == ImageType.UNKNOWN )
+    imageType = File.geImageTypeFromPath( filePath );
+
   if ( imageType == ImageType.UNKNOWN )
   {
-    // If the image type still is unknown, try to infer it from the file name.
-    var fileName = File.extractName( filePath ).toLowerCase();
-    if ( fileName.has( "bias" ) )
-      imageType = ImageType.BIAS;
-    else if ( fileName.has( "dark" ) )
-      imageType = ImageType.DARK;
-    else if ( fileName.has( "flat" ) )
-      imageType = ImageType.FLAT;
-    else if ( fileName.has( "light" ) )
-      imageType = ImageType.LIGHT;
-    else
-    {
-      this.diagnosticMessages.push( "Unable to determine frame type: " + filePath );
-      return false;
-    }
+    this.diagnosticMessages.push( "Unable to determine frame type: " + filePath );
+    return false;
   }
 
-  // smart naming: extract binning, filter and duration from filePath
   if ( !forcedBinning && binning == 1 )
     binning = File.getBinningFromPath( filePath );
   if ( !forcedFilter && filter == undefined )
@@ -827,7 +817,7 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
     case ImageType.LIGHT:
       break;
     default:
-      throw new Error( "StackEngine.addFile(): Internal error: Invalid image type: " + imageType.toString() );
+      throw new Error( "StackEngine.addFile(): Internal error: Invalid image type: " + StackEngine.imageTypeToString( imageType ) );
       break;
   }
 

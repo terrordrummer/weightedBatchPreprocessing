@@ -1513,7 +1513,6 @@ function SubframesWeightingControl( parent )
 
   this.updateControls = function()
   {
-    console.writeln( 'WEIGHT CONTROLS:', engine.generateSubframesWeights, engine.useBestLightAsReference, engine.generateSubframesWeightsAfterRegistration );
     this.subframesWeightCheckBox.checked = engine.generateSubframesWeights;
     this.subframesWeightUseBestReferenceCheckBox.checked = engine.useBestLightAsReference;
     this.subframesWeightAfterRegistrationCheckBox.checked = engine.generateSubframesWeightsAfterRegistration;

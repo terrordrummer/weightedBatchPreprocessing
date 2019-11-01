@@ -319,22 +319,69 @@ if ( !File.loadFITSKeywords )
     return keywords;
   };
 
+// ----------------------------------------------------------------------------
+// SMART NAMING HELPERS
+// ----------------------------------------------------------------------------
+function lastMatching( text, regexp )
+{
+  let matches = text.match( regexp )
+  if ( matches != null && matches.length > 0 )
+  {
+    return matches[ matches.length - 1 ];
+  }
+  return undefined;
+}
+
 /*
- * Extract the exposure time from the first last matching pattern occurrence in its filePath.
+ * Extract the image tyoe from the last matching pattern occurrence in its filePath.
+ */
+File.geImageTypeFromPath = function( filePath )
+{
+  // file path must contain one pr more of BIAS, DARK, DARKS, FLAT, FLATS, LIGHT or LIGHTS. The last of the sequence will be taken.
+  // It is useful to check the whole path since instead of renaming single files it's possible to put all light files into an enclosing folder with the word "lights" in the name.
+  //
+  // NOTE: negative look behind is not supported in JS so the first char before the keywords is matched and removed in the switch
+  var regexp = /(?![a-z0-9]).{0,1}(BIAS|DARK|DARKS|FLAT|FLATS|LIGHT|LIGHTS)(?![a-z0-9])/gi;
+  let fileType = lastMatching( filePath, regexp );
+  if ( fileType )
+  {
+    switch ( fileType.substr( 1 ).toUpperCase() )
+    {
+      case 'BIAS':
+        return ImageType.BIAS;
+      case 'DARK':
+      case 'DARKS':
+        return ImageType.DARK;
+      case 'FLAT':
+      case 'FLATS':
+        return ImageType.FLAT;
+      case 'LIGHT':
+      case 'LIGHTS':
+        return ImageType.LIGHT;
+    }
+  }
+
+  return ImageType.UNKNOWN;
+}
+
+/*
+ * Extract the exposure time from the last matching pattern occurrence in its filePath.
+ * Exposure can be specified by means of he 
  */
 File.getExposureTimeFromPath = function( filePath )
 {
   // match the format EXPTIME_10.0 or EXPOSURE_2
-  var regexp = /(EXPTIME|EXPOSURE)(_|-)[0-9]+(\.[0-9]*)?/gm;
-  let matches = regexp.exec( filePath );
-  if ( matches !== null )
+  var regexp = /(EXPTIME|EXPOSURE)(_|-| )[0-9]+(\.[0-9]*)?/gi;
+  let match = lastMatching( filePath, regexp );
+  if ( match )
   {
-    let value = Number( matches[ 0 ].split( '_' )[ 1 ] )
+    let sanitizedStrValue = match.replace( /(EXPTIME|EXPOSURE)(_|-| )/gi, '' );
+    let value = Number( sanitizedStrValue );
     return value !== NaN ? value : 0
   }
   // find any number followed by 's' or 'sec' ore '_secs' like 2s, 2.1_secs or 2.2sec
   let postfixes = [ 's', 'sec', '_secs' ];
-  regexp = /[0-9]+(\.[0-9]*)?(?=(s|sec|_secs)[^a-zA-Z0-9])/gm;
+  regexp = /[0-9]+(\.[0-9]*)?(?=(s|sec|_secs)[^a-zA-Z0-9])/gi;
   let matches = regexp.exec( filePath );
   if ( matches !== null )
   {
@@ -350,28 +397,35 @@ File.getExposureTimeFromPath = function( filePath )
 }
 
 /*
- * Extract the binning from the first last matching pattern occurrence in its filePath.
+ * Extract the binning from the last matching pattern occurrence in its filePath.
  */
 File.getBinningFromPath = function( filePath )
 {
-  var regexp = /(XBINNING|CCDBINX|BINNING)(_|-)[0-9]+/gm;
-  let matches = regexp.exec( filePath );
-  if ( matches === null )
-    return 1;
-  let value = Number( matches[ 0 ].split( '_' )[ 1 ] )
-  return value !== NaN ? value : 1
+  var regexp = /(XBINNING|CCDBINX|BINNING)(_|-| )[0-9]+/gi;
+  let match = lastMatching( filePath, regexp );
+  if ( match )
+  {
+    let sanitizedStrValue = match.replace( /(XBINNING|CCDBINX|BINNING)(_|-| )/gi, '' );
+    let value = Number( sanitizedStrValue );
+    return value !== NaN ? value : 1
+  }
+  return 1
 }
 
 /*
- * Extract the filter name from the first last matching pattern occurrence in its filePath.
+ * Extract the filter name from the last matching pattern occurrence in its filePath.
+ * Poissible valid combinations within the path are:
+ * - FILTER NebulaBooster
+ * - FILTER-Ha
+ * - INSFLNAM_L
  */
 File.getFilterFromPath = function( filePath )
 {
-  var regexp = /(FILTER|INSFLNAM)(_|-)[a-zA-Z0-9]+/gm;
-  let matches = regexp.exec( filePath );
-  if ( matches === null )
-    return "";
-  return matches[ 0 ].split( '_' )[ 1 ]
+  var regexp = /(FILTER|INSFLNAM)(_|-| )[a-zA-Z0-9]+/gi;
+  let match = lastMatching( filePath, regexp );
+  if ( match )
+    return match.replace( /(FILTER|INSFLNAM)(_|-| )/gi, '' );
+  return '';
 }
 
 // ----------------------------------------------------------------------------
