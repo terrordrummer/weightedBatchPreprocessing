@@ -1,12 +1,11 @@
 - Automatic light frame weights computation
 - Automatic selection of the best reference frame for registration
 - Multiple duration/filter/binning light frame groups processed
-- "Group lights with different exposures" flag added to optionaly group all light frames despite their duration
-- Always calibrate flat with bias if provided
+- "Group lights with different exposures" flag added to optionally group all light frames despite their duration
 - Light frames are grouped by duration during calibration process to match the correct dark frame (useful when light frames with different exposure are grouped together)
 - "auto" rejection option to select the best rejection strategy during integration
 - Smart naming: BINNING, FILTER and EXPTIME can be added to file names or including folder to provide these values when no proper keywords are stored into frame files
 - Flat frames are always calibrated with master bias if a matching master bias is provided
 - Smart reporting: summary of operations shown at the end of the process
 - Advanced diagnostic
-- Save frame groups flag added
+- "Save frame groups on exit" flag added
