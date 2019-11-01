@@ -55,7 +55,6 @@
 #include <pjsr/ColorSpace.jsh>
 #include <pjsr/StarDetector.jsh>
 #include "WeightedBatchPreprocessing-processLogger.js"
-#define SAVE_GROUPS true
 /* beautify ignore:end */
 
 
@@ -548,22 +547,9 @@ function ProcessLogDialog( processLogger )
     this.dialog.ok();
   };
 
-  // this.saveButton = new PushButton( this );
-  // this.saveButton.defaultButton = true;
-  // this.saveButton.text = "Save...";
-  // this.saveButton.icon = this.scaledResource( ":/icons/cancel.png" );
-  // this.saveButton.onClick = function()
-  // {
-  //   // WRITE LOGS
-  // };
-
   this.buttonsSizer = new HorizontalSizer;
   this.buttonsSizer.addStretch();
   this.buttonsSizer.add( this.okButton );
-
-  // this.buttonsSizer.addSpacing( 8 );
-  // this.buttonsSizer.add( this.saveButton );
-
 
   this.sizer = new VerticalSizer;
   this.sizer.margin = 8;
@@ -927,7 +913,6 @@ StackEngine.prototype.reconstructGroups = function()
   // sort by BINNING, FILTER and EXPOSURE
   this.frameGroups.sort( ( a, b ) =>
   {
-    console.writeln( 'a.filter ', a.filter, ', b.filter', b.filter );
     if ( a.binning != b.binning ) return a.binning > b.binning;
     if ( a.filter != b.filter ) return a.filter.toLowerCase() > b.filter.toLowerCase();
     return a.exposureTime < b.exposureTime;
@@ -1815,7 +1800,7 @@ StackEngine.prototype.doLight = function()
         {
 
           console.warningln( "** Warning: All demosaiced light frame files for group with BINNING = ", this.frameGroups[ i ].binning, ", FILTER = ", this.frameGroups[ i ].filter, " and EXPOSURE = ", this.frameGroups[ i ].exposuresToString, " have been removed or cannot be accessed." );
-          this.processLogger.addWarning( "All demosaiced light frame files for group with BINNING = ", this.frameGroups[ i ].binning, ", FILTER = ", this.frameGroups[ i ].filter, " and EXPOSURE = ", this.frameGroups[ i ].exposuresToString, " have been removed or cannot be accessed." );
+          this.processLogger.addWarning( "All demosaiced light frame files for group with BINNING = " + this.frameGroups[ i ].binning + ", FILTER = " + this.frameGroups[ i ].filter + " and EXPOSURE = " + this.frameGroups[ i ].exposuresToString + " have been removed or cannot be accessed." );
           return;
         }
         this.processLogger.addSuccess( "Debayer OK" );
@@ -1964,8 +1949,8 @@ StackEngine.prototype.doLight = function()
       else if ( images.length < 3 )
       {
         let failed = preRegistrationImagesCount - images.length;
-        console.warningln( " ** Warning: Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, " provided. A minimum of 3 images must be succesfully registered." );
-        this.processLogger.addError( "Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, " provided. A minimum of 3 images must be succesfully registered." );
+        console.warningln( " ** Warning: Star alignment failed to register ", failed, " images out of ", preRegistrationImagesCount, ". A minimum of 3 images must be succesfully registered." );
+        this.processLogger.addError( "Star alignment failed to register " + failed + " images out of " + preRegistrationImagesCount + ". A minimum of 3 images must be succesfully registered." );
         this.processLogger.addMessage( processedImageGroups[ p ].footer );
         this.processLogger.newLine();
         return;
@@ -2377,7 +2362,7 @@ StackEngine.prototype.doCalibrate = function( frameGroup )
           "************************************************************" );
         console.noteln( "* End calibration of ", StackEngine.imageTypeToString( imageType ), " frames" );
         console.noteln( "************************************************************" );
-        this.processLogger.addWarning( "neither master provided nor master dark matching the exposure has been found" )
+        this.processLogger.addWarning( "neither master nor master dark matching the exposure has been found" )
         return retVal;
       }
       else if ( masterBiasEnabled )
@@ -2564,6 +2549,8 @@ StackEngine.prototype.loadSettings = function()
   }
 
   var o;
+  if ( ( o = load( "saveSession", DataType_Boolean ) ) != null )
+    this.saveSession = o;
   if ( ( o = load( "cfaImages", DataType_Boolean ) ) != null )
     this.cfaImages = o;
   if ( ( o = load( "upBottomFITS", DataType_Boolean ) ) != null )
@@ -2694,7 +2681,7 @@ StackEngine.prototype.loadSettings = function()
     this.useTriangleSimilarity = o;
   if ( ( o = load( "integrate", DataType_Boolean ) ) != null )
     this.integrate = o;
-  if ( SAVE_GROUPS )
+  if ( this.saveSession )
     if ( ( o = load( "frameGroups", DataType_String ) ) != null )
       this.framesGroupsFromStringData( o );
 };
@@ -2711,6 +2698,7 @@ StackEngine.prototype.saveSettings = function()
     save( key + '_' + index.toString(), type, value );
   }
 
+  save( "saveSession", DataType_Boolean, this.saveSession );
   save( "cfaImages", DataType_Boolean, this.cfaImages );
   save( "upBottomFITS", DataType_Boolean, this.upBottomFITS );
   save( "exportCalibrationFiles", DataType_Boolean, this.exportCalibrationFiles );
@@ -2779,8 +2767,10 @@ StackEngine.prototype.saveSettings = function()
   save( "useTriangleSimilarity", DataType_Boolean, this.useTriangleSimilarity );
   save( "integrate", DataType_Boolean, this.integrate );
 
-  if ( SAVE_GROUPS )
+  if ( this.saveSession )
     save( "frameGroups", DataType_String, this.framesGroupsToStringData() );
+  else
+    save( "frameGroups", DataType_String, "[]" );
 };
 
 StackEngine.prototype.setDefaultParameters = function()
@@ -2791,6 +2781,7 @@ StackEngine.prototype.setDefaultParameters = function()
 function setDefaultParameters()
 {
   // General options
+  this.saveSession = DEFAULT_SAVE_SESSION;
   this.outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
   this.cfaImages = DEFAULT_CFA_IMAGES;
   this.upBottomFITS = DEFAULT_UP_BOTTOM_FITS;
@@ -2878,6 +2869,9 @@ StackEngine.prototype.importParameters = function()
 {
   this.setDefaultParameters();
   this.loadSettings();
+
+  if ( Parameters.has( "saveSession" ) )
+    this.saveSession = Parameters.getBoolean( "saveSession" );
 
   if ( Parameters.has( "outputDirectory" ) )
     this.outputDirectory = Parameters.getString( "outputDirectory" );
@@ -3083,50 +3077,9 @@ StackEngine.prototype.importParameters = function()
   if ( Parameters.has( "integrate" ) )
     this.integrate = Parameters.getBoolean( "integrate" );
 
-  if ( SAVE_GROUPS )
+  if ( this.saveSession )
     if ( Parameters.has( "frameGroups" ) )
       this.framesGroupsFromStringData( Parameters.getString( "frameGroups" ) );
-
-  // if ( this.exportCalibrationFiles )
-  //   for ( var i = 0;; ++i )
-  //   {
-  //     if ( !Parameters.hasIndexed( "group_imageType", i ) ||
-  //       !Parameters.hasIndexed( "group_filter", i ) ||
-  //       !Parameters.hasIndexed( "group_binning", i ) ||
-  //       !Parameters.hasIndexed( "group_exposureTime", i ) ||
-  //       !Parameters.hasIndexed( "group_masterFrame", i ) ||
-  //       !Parameters.hasIndexed( "group_enabled", i ) )
-  //     {
-  //       break;
-  //     }
-
-  //     var group = new FrameGroup( Parameters.getIntegerIndexed( "group_imageType", i ),
-  //       Parameters.getStringIndexed( "group_filter", i ),
-  //       Parameters.getIntegerIndexed( "group_binning", i ),
-  //       Parameters.getRealIndexed( "group_exposureTime", i ),
-  //       null,
-  //       Parameters.getBooleanIndexed( "group_masterFrame", i ) );
-  //     group.enabled = Parameters.getBooleanIndexed( "group_enabled", i );
-
-  //     var groupIndexId = Parameters.indexedId( "group_frames", i );
-  //     for ( var j = 0;; ++j )
-  //     {
-  //       if ( !Parameters.hasIndexed( groupIndexId + "_filePath", j ) ||
-  //         !Parameters.hasIndexed( groupIndexId + "_exposureTime", j ) ||
-  //         !Parameters.hasIndexed( groupIndexId + "_enabled", j ) )
-  //       {
-  //         break;
-  //       }
-
-  //       var item = new FileItem( Parameters.getStringIndexed( groupIndexId + "_filePath", j ),
-  //         Parameters.getRealIndexed( groupIndexId + "_exposureTime", j ) );
-  //       item.enabled = Parameters.getBooleanIndexed( groupIndexId + "_enabled", j );
-  //       group.fileItems.push( item );
-  //     }
-
-  //     if ( group.fileItems.length > 0 ) // don't add empy frame groups
-  //       this.frameGroups.push( group );
-  //   }
 };
 
 StackEngine.prototype.exportParameters = function()
@@ -3135,6 +3088,7 @@ StackEngine.prototype.exportParameters = function()
 
   Parameters.set( "version", VERSION );
 
+  Parameters.set( "saveSession", this.saveSession );
   Parameters.set( "outputDirectory", this.outputDirectory );
   Parameters.set( "cfaImages", this.cfaImages );
   Parameters.set( "upBottomFITS", this.upBottomFITS );
@@ -3220,30 +3174,10 @@ StackEngine.prototype.exportParameters = function()
 
   Parameters.set( "integrate", this.integrate );
 
-  if ( SAVE_GROUPS )
+  if ( this.saveSession )
     Parameters.set( "frameGroups", this.framesGroupsToStringData() );
-
-  // if ( this.exportCalibrationFiles )
-  //   for ( var i = 0; i < this.frameGroups.length; ++i )
-  //     if ( this.frameGroups[ i ].fileItems.length > 0 )
-  //     {
-  //       var group = this.frameGroups[ i ];
-  //       Parameters.setIndexed( "group_imageType", i, group.imageType );
-  //       Parameters.setIndexed( "group_filter", i, group.filter );
-  //       Parameters.setIndexed( "group_binning", i, group.binning );
-  //       Parameters.setIndexed( "group_exposureTime", i, group.exposureTime );
-  //       Parameters.setIndexed( "group_masterFrame", i, group.masterFrame );
-  //       Parameters.setIndexed( "group_enabled", i, group.enabled );
-
-  //       var groupIndexId = Parameters.indexedId( "group_frames", i );
-  //       for ( var j = 0; j < group.fileItems.length; ++j )
-  //       {
-  //         var item = group.fileItems[ j ];
-  //         Parameters.setIndexed( groupIndexId + "_filePath", j, item.filePath );
-  //         Parameters.setIndexed( groupIndexId + "_exposureTime", j, item.exposureTime );
-  //         Parameters.setIndexed( groupIndexId + "_enabled", j, item.enabled );
-  //       }
-  //     }
+  else
+    Parameters.set( "frameGroups", "[]" );
 };
 
 StackEngine.prototype.runDiagnostics = function()
@@ -3485,7 +3419,7 @@ StackEngine.prototype.runDiagnostics = function()
               }
             }
           if ( !haveFlats && this.hasFlatFrames() )
-            this.warning( "No matching flat frames have been selected to calibrate " + this.frameGroups[ i ].toString() );
+            this.warning( "No matching flat frames have been found to calibrate " + this.frameGroups[ i ].toString() );
         }
     }
 

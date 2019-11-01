@@ -72,6 +72,7 @@ var ImageType = {
 };
 
 // Default parameters
+#define DEFAULT_SAVE_SESSION                          true
 #define DEFAULT_OUTPUT_DIRECTORY                      ""
 #define DEFAULT_CFA_IMAGES                            false
 #define DEFAULT_UP_BOTTOM_FITS                        true

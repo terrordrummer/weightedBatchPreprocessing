@@ -2576,6 +2576,15 @@ function StackDialog()
     this.dialog.updateControls();
   };
 
+  this.saveSessionCheckBox = new CheckBox( this );
+  this.saveSessionCheckBox.text = "Save groups on exit";
+  this.saveSessionCheckBox.toolTip = "<p>When this option is selected  file groups will be saved before closing and they will be reloaded on next launch.</p><p>Select this option if you need to close the dialog to check the master integration files and reopen it without loosing the file groups.</p>";
+  this.saveSessionCheckBox.onCheck = function( checked )
+  {
+    engine.saveSession = checked;
+    this.dialog.updateControls();
+  };
+
   //
 
   this.optionsSizer1 = new VerticalSizer;
@@ -2583,8 +2592,8 @@ function StackDialog()
   this.optionsSizer1.add( this.cfaImagesCheckBox );
   this.optionsSizer1.add( this.optimizeDarksCheckBox );
   this.optionsSizer1.add( this.generateRejectionMapsCheckBox );
-  //   this.optionsSizer1.add( this.exportCalibrationFilesCheckBox );
   this.optionsSizer1.add( this.saveProcessLogCheckBox );
+  this.optionsSizer1.add( this.saveSessionCheckBox );
 
   this.optionsSizer2 = new VerticalSizer;
   this.optionsSizer2.spacing = 4;
@@ -2799,12 +2808,12 @@ StackDialog.prototype.updateControls = function()
   this.cfaImagesCheckBox.checked = engine.cfaImages;
   this.optimizeDarksCheckBox.checked = engine.optimizeDarks;
   this.generateRejectionMapsCheckBox.checked = engine.generateRejectionMaps;
-  //   this.exportCalibrationFilesCheckBox.checked = engine.exportCalibrationFiles;
   this.saveProcessLogCheckBox.checked = engine.saveProcessLog;
   this.upBottomFITSCheckBox.checked = engine.upBottomFITS;
   this.useAsMasterBiasCheckBox.checked = engine.useAsMaster[ ImageType.BIAS ];
   this.useAsMasterDarkCheckBox.checked = engine.useAsMaster[ ImageType.DARK ];
   this.useAsMasterFlatCheckBox.checked = engine.useAsMaster[ ImageType.FLAT ];
+  this.saveSessionCheckBox.checked = engine.saveSession;
   this.referenceImageEdit.text = engine.useBestLightAsReference ? 'auto' : engine.referenceImage;
   this.outputDirectoryEdit.text = engine.outputDirectory;
   this.referenceImageEdit.enabled = !engine.useBestLightAsReference;
@@ -2826,7 +2835,6 @@ StackDialog.prototype.refreshTreeBoxes = function()
     let imageType = frameGroup.imageType;
     let binning = frameGroup.binning.toString();
     let filter = frameGroup.filter;
-    let exposureTimes = frameGroup.exposureTimes;
 
     var node;
     var treeNode;
@@ -2886,8 +2894,6 @@ StackDialog.prototype.refreshTreeBoxes = function()
         }
       }
 
-      // if ( imageType !== ImageType.FLAT )
-      // {
       let exposureTimesString = frameGroup.exposuresToString();
       if ( !treeNode.hasOwnProperty( exposureTimesString ) )
       {
@@ -2905,7 +2911,6 @@ StackDialog.prototype.refreshTreeBoxes = function()
       {
         node = treeNode[ exposureTimesString ].node;
       }
-      // }
     }
 
     let rootNode = node;
