@@ -9,3 +9,4 @@
 - Flat frames are always calibrated with master bias if a matching master bias is provided
 - Smart reporting: summary of operations shown at the end of the process
 - Advanced diagnostic
+- Save frame groups flag added
