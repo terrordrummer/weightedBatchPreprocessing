@@ -105,12 +105,12 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
       case ImageType.BIAS:
         return this.binning == binning
       case ImageType.DARK:
-        return this.binning == binning && ( Math.abs( this.exposureTime - exposureTime ) <= exposureTolerance );
+        return this.binning == binning && ( Math.abs( this.exposureTime - exposureTime ) <= Math.max( CONST_MIN_EXPOSURE_TOLERANCE, exposureTolerance ) );
       case ImageType.FLAT:
       case ImageType.UNKNOWN:
         return this.binning == binning && this.filter == filter;
       case ImageType.LIGHT:
-        return this.binning == binning && this.filter == filter && ( groupLightsOfDifferentExposure || ( !groupLightsOfDifferentExposure && Math.abs( this.exposureTime - exposureTime ) <= 0.5 ) );
+        return this.binning == binning && this.filter == filter && ( groupLightsOfDifferentExposure || ( !groupLightsOfDifferentExposure && Math.abs( this.exposureTime - exposureTime ) <= CONST_MIN_EXPOSURE_TOLERANCE ) );
     }
     return false;
   }
@@ -195,13 +195,22 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
 
   this.addExposureTime = function( time )
   {
-    var times = new Set( this.exposureTimes );
-    if ( !times.has( time ) )
+    // check exposure with tolerance
+    var hasExposure = false;
+    for ( let i = 0; i < this.exposureTimes.length; i++ )
+    {
+      if ( Math.abs( time - this.exposureTimes[ i ] ) < CONST_MIN_EXPOSURE_TOLERANCE )
+      {
+        hasExposure = true;
+        break;
+      }
+    }
+    if ( !hasExposure )
     {
       this.exposureTimes.push( time );
       this.exposureTimes.sort( ( a, b ) => a > b )
+      this.exposureTime = Math.max.apply( null, this.exposureTimes );
     }
-    this.exposureTime = Math.max.apply( null, this.exposureTimes );
   }
 
   this.exposuresToString = function()
@@ -231,7 +240,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
 
   this.logStringHeader = function()
   {
-    let str = '<b>---------------------------------\n';
+    let str = '<b>************************************************************\n';
     str += 'Group of ' + this.fileItems.length + ' ' + StackEngine.imageTypeToString( this.imageType ) + ' frames\n';
     str += 'BINNING  : ' + this.binning + '\n';
     if ( this.imageType != ImageType.BIAS && this.imageType != ImageType.DARK )
@@ -243,8 +252,9 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
 
   this.logStringFooter = function()
   {
-    return '<b>---------------------------------</b>\n';
+    return '<b>************************************************************</b>\n';
   }
+
   this.toString = function()
   {
     var a = [];
@@ -888,6 +898,15 @@ StackEngine.prototype.deleteFrameSet = function( imageType )
 
 StackEngine.prototype.reconstructGroups = function()
 {
+  // reconstruction is based on readding the whole files one by one.
+  // in order to avoid wrong behaviours due to the useAsMaster flags, they will be saved and reset at the beginning and then restored at the end
+  let masterFlags = [];
+  for ( let i = 0; i < this.useAsMaster.length; ++i )
+  {
+    masterFlags[ i ] = this.useAsMaster[ i ];
+    this.useAsMaster[ i ] = false;
+  }
+
   // flatten existing file containers, clean groups and readd all
   var fileItems = [];
 
@@ -917,6 +936,12 @@ StackEngine.prototype.reconstructGroups = function()
     if ( a.filter != b.filter ) return a.filter.toLowerCase() > b.filter.toLowerCase();
     return a.exposureTime < b.exposureTime;
   } );
+
+  for ( let i = 0; i < masterFlags.length; ++i )
+  {
+    this.useAsMaster[ i ] = masterFlags[ i ];
+    this.updateMasterFrames( i );
+  }
 }
 
 StackEngine.prototype.inputHints = function()
@@ -1404,10 +1429,10 @@ StackEngine.prototype.computeWeightForLight = function( descriptor, descriptorMi
   let weight = pedestal + a * FWHMWeight + b * eccentricityWeight + c * SNRWeight;
   console.noteln( 'Weights of image: ', descriptor.filePath );
   console.noteln( "-----------------------" );
-  console.noteln( 'FWHM         : ', isNaN( a ) ? '-' : format( "%.02f", a * 100 ), ' %' );
-  console.noteln( 'eccentricity : ', isNaN( b ) ? '-' : format( "%.02f", b * 100 ), ' %' );
-  console.noteln( 'SNR          : ', isNaN( c ) ? '-' : format( "%.02f", c * 100 ), ' %' );
-  console.noteln( 'Image weight : ', isNaN( weight ) ? '-' : format( "%.02f", weight ) );
+  console.noteln( ' FWHM         : ', isNaN( a ) ? '-' : format( "%.02f", a * 100 ), ' %' );
+  console.noteln( ' eccentricity : ', isNaN( b ) ? '-' : format( "%.02f", b * 100 ), ' %' );
+  console.noteln( ' SNR          : ', isNaN( c ) ? '-' : format( "%.02f", c * 100 ), ' %' );
+  console.noteln( ' Image weight : ', isNaN( weight ) ? '-' : format( "%.02f", weight ) );
   console.noteln( "-----------------------" );
   console.flush();
   return weight;
@@ -1442,10 +1467,10 @@ StackEngine.prototype.writeWeightsWithDescriptors = function( imagesDescriptors,
         {
           imageWindow.keywords = imageWindow.keywords.filter( keyword =>
           {
-            return keyword.name !== "SWWEIGHT";
+            return keyword.name !== WEIGHT_KEYWORD;
           } ).concat(
             new FITSKeyword(
-              "SWWEIGHT",
+              WEIGHT_KEYWORD,
               format( "%.3e", weight ).replace( "e", "E" ),
               "Subframe weight"
             ) );
@@ -1498,9 +1523,9 @@ StackEngine.prototype.computeDescriptors = function( images )
     imagesDescriptors.push( descriptor );
 
     console.noteln( "------------------------" );
-    console.noteln( "FWHM        : ", format( "%0.3f", descriptor.FWHM ), " px" );
-    console.noteln( "Eccentricity: ", format( "%0.3f", descriptor.eccentricity ) );
-    console.noteln( "SNR         : ", format( "%0.3f", descriptor.SNR ) );
+    console.noteln( " FWHM        : ", format( "%0.3f", descriptor.FWHM ), " px" );
+    console.noteln( " Eccentricity: ", format( "%0.3f", descriptor.eccentricity ) );
+    console.noteln( " SNR         : ", format( "%0.3f", descriptor.SNR ) );
     console.noteln( "------------------------" );
     console.flush();
     imageWindow.forceClose();
@@ -1538,7 +1563,7 @@ StackEngine.prototype.doBias = function()
       this.frameGroups[ i ].masterFrame = true;
       this.frameGroups[ i ].fileItems.unshift( new FileItem( masterBiasPath, ImageType.BIAS, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, this.frameGroups[ i ].exposureTime ) );
       this.useAsMaster[ ImageType.BIAS ] = true;
-      this.processLogger.addSuccess( "Integration OK", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
+      this.processLogger.addSuccess( "Integration completed", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
       this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
       processEvents();
       gc();
@@ -1563,7 +1588,7 @@ StackEngine.prototype.doDark = function()
       this.frameGroups[ i ].masterFrame = true;
       this.frameGroups[ i ].fileItems.unshift( new FileItem( masterDarkPath, ImageType.DARK, this.frameGroups[ i ].filter, this.frameGroups[ i ].binning, this.frameGroups[ i ].exposureTime ) );
       this.useAsMaster[ ImageType.DARK ] = true;
-      this.processLogger.addSuccess( "Integration OK", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
+      this.processLogger.addSuccess( "Integration completed", "master file " + this.frameGroups[ i ].fileItems[ 0 ].filePath );
       this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
       processEvents();
       gc();
@@ -1605,7 +1630,7 @@ StackEngine.prototype.doFlat = function()
         this.processLogger.newLine();
         return;
       }
-      this.processLogger.addSuccess( "Calibration OK" );
+      this.processLogger.addSuccess( "Calibration completed" );
       var masterFlatPath = this.doIntegrate( tmpGroup );
       if ( masterFlatPath.isEmpty() )
       {
@@ -1617,7 +1642,7 @@ StackEngine.prototype.doFlat = function()
       this.frameGroups[ i ].masterFrame = true;
       this.useAsMaster[ ImageType.FLAT ] = true;
       this.addFile( masterFlatPath, ImageType.FLAT );
-      this.processLogger.addSuccess( "Integration OK", "master file " + masterFlatPath );
+      this.processLogger.addSuccess( "Integration completed", "master file " + masterFlatPath );
       this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
       processEvents();
       gc();
@@ -1665,12 +1690,19 @@ StackEngine.prototype.doLight = function()
         var filePath = outputData[ c ][ 0 ]; // outputData.outputImage
         if ( !filePath.isEmpty() )
           if ( File.exists( filePath ) )
-            images.push( filePath );
-          else
           {
-            console.warningln( "** Warning: File does not exist after image calibration: " + filePath );
-            this.processLogger.addWarning( "File does not exist after image calibration: " + filePath );
+            if ( File.extractName( filePath ) == ( File.extractName( actualReferenceImage ) + "_c" ) )
+            {
+              console.noteln( 'New reference image path: ', filePath );
+              actualReferenceImage = filePath;
+            }
+            images.push( filePath );
           }
+        else
+        {
+          console.warningln( "** Warning: File does not exist after image calibration: " + filePath );
+          this.processLogger.addWarning( "File does not exist after image calibration: " + filePath );
+        }
       }
       if ( images.length < 1 )
       {
@@ -1678,7 +1710,7 @@ StackEngine.prototype.doLight = function()
         this.processLogger.addWarning( "All calibrated light frame files have been removed or cannot be accessed." );
         return;
       }
-      this.processLogger.addSuccess( "Calibration OK" );
+      this.processLogger.addSuccess( "Calibration completed" );
 
       if ( this.cosmeticCorrection )
       {
@@ -1721,17 +1753,21 @@ StackEngine.prototype.doLight = function()
          * ### FIXME: CosmeticCorrection should provide read-only output
          * data, including the full file path of each output image.
          */
+        let prevStepImages = images;
         images = new Array;
-        for ( var c = 0; c < this.frameGroups[ i ].fileItems.length; ++c )
+        for ( var c = 0; c < prevStepImages.length; ++c )
         {
-          var filePath = this.frameGroups[ i ].fileItems[ c ].filePath;
+          var filePath = prevStepImages[ c ];
           var ccFilePath = cosmetizedDirectory + '/' +
             File.extractName( filePath ) +
-            "_c_cc" + ".xisf";
+            "_cc" + ".xisf";
           if ( File.exists( ccFilePath ) )
           {
             if ( filePath == actualReferenceImage )
+            {
+              console.noteln( 'New reference image path: ', ccFilePath );
               actualReferenceImage = ccFilePath;
+            }
             images.push( ccFilePath );
           }
           else
@@ -1787,8 +1823,11 @@ StackEngine.prototype.doLight = function()
             if ( File.exists( filePath ) )
             {
               debayerImages.push( filePath );
-              if ( images[ c ] == actualReferenceImage )
+              if ( File.extractName( filePath ) == File.extractName( actualReferenceImage ) + "_d" )
+              {
+                console.noteln( 'New reference image path: ', filePath );
                 actualReferenceImage = filePath;
+              }
             }
           else
           {
@@ -1803,8 +1842,7 @@ StackEngine.prototype.doLight = function()
           this.processLogger.addWarning( "All demosaiced light frame files for group with BINNING = " + this.frameGroups[ i ].binning + ", FILTER = " + this.frameGroups[ i ].filter + " and EXPOSURE = " + this.frameGroups[ i ].exposuresToString + " have been removed or cannot be accessed." );
           return;
         }
-        this.processLogger.addSuccess( "Debayer OK" );
-        this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
+        this.processLogger.addSuccess( "Debayer completed" );
         images = debayerImages;
 
         console.noteln( "<end><cbr><br>",
@@ -1830,7 +1868,9 @@ StackEngine.prototype.doLight = function()
         let desc = this.computeDescriptors( images );
         imagesDescriptors[ i ] = desc.imagesDescriptors;
         imagesDescriptorsMinMax[ i ] = desc.imagesDescriptorsMinMax;
+        this.processLogger.addSuccess( "Frames analysis completed" );
       }
+      this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
     }
   }
 
@@ -1853,14 +1893,20 @@ StackEngine.prototype.doLight = function()
       console.noteln( "* End selection of the best reference frame for registration" );
       console.noteln( "************************************************************" );
       console.flush();
-      this.processLogger.addSuccess( "Best reference frame for registration", actualReferenceImage );
+      this.processLogger.addSuccess( "Best reference frame for registration - auto selection completed:", actualReferenceImage );
+      this.processLogger.newLine();
+    }
+    else
+    {
+      this.processLogger.addSuccess( "Reference frame for registration", actualReferenceImage );
       this.processLogger.newLine();
     }
 
-    if ( this.generateSubframesWeights && this.generateSubframesWeightsAfterRegistration === false )
+    // if frame analysis has been already performed and weights needs to be stored before the registration
+    if ( this.generateSubframesWeights && !this.generateSubframesWeightsAfterRegistration )
     {
       this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
-      this.processLogger.addSuccess( "Frame weights computed and stored succesfully" );
+      this.processLogger.addSuccess( "Weights succesfully computed and stored" );
       this.processLogger.newLine();
     }
 
@@ -1964,6 +2010,7 @@ StackEngine.prototype.doLight = function()
       else
       {
         this.processLogger.addSuccess( "Registration OK" );
+
       }
 
       console.noteln( "<end><cbr><br>",
@@ -1980,7 +2027,7 @@ StackEngine.prototype.doLight = function()
         imagesDescriptors[ 0 ] = desc.imagesDescriptors;
         imagesDescriptorsMinMax[ 0 ] = desc.imagesDescriptorsMinMax;
         this.writeWeightsWithDescriptors( imagesDescriptors, imagesDescriptorsMinMax );
-        this.processLogger.addSuccess( "Frame weights computed and stored succesfully" );
+        this.processLogger.addSuccess( "Frame weights succesfully computed and stored after registration" );
       }
 
       if ( this.integrate )
@@ -2010,7 +2057,7 @@ StackEngine.prototype.doLight = function()
           this.processLogger.addError( "Error integrating light frames." );
         }
         else
-          this.processLogger.addSuccess( "Integration OK", "master light: " + masterLightPath );
+          this.processLogger.addSuccess( "Integration completed", "master light: " + masterLightPath );
       }
       this.processLogger.addMessage( processedImageGroups[ p ].footer );
     }
@@ -2103,7 +2150,7 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   {
     case ImageType.LIGHT:
       II.weightMode = this.generateSubframesWeights ? ImageIntegration.prototype.KeywordWeight : ImageIntegration.prototype.NoiseEvaluation;
-      II.weightKeyword = this.generateSubframesWeights ? "SWWEIGHT" : "";
+      II.weightKeyword = this.generateSubframesWeights ? WEIGHT_KEYWORD : "";
       II.evaluateNoise = this.evaluateNoise;
       II.rangeClipLow = true;
       II.rangeLow = 0;
@@ -2549,8 +2596,8 @@ StackEngine.prototype.loadSettings = function()
   }
 
   var o;
-  if ( ( o = load( "saveSession", DataType_Boolean ) ) != null )
-    this.saveSession = o;
+  if ( ( o = load( "saveFrameGroups", DataType_Boolean ) ) != null )
+    this.saveFrameGroups = o;
   if ( ( o = load( "cfaImages", DataType_Boolean ) ) != null )
     this.cfaImages = o;
   if ( ( o = load( "upBottomFITS", DataType_Boolean ) ) != null )
@@ -2608,6 +2655,9 @@ StackEngine.prototype.loadSettings = function()
 
   for ( var i = 0; i < 4; ++i )
   {
+    if ( this.saveFrameGroups )
+      if ( ( o = loadIndexed( "useAsMaster", i, DataType_Boolean ) ) != null )
+        this.useAsMaster[ i ] = o;
     if ( ( o = loadIndexed( "combination", i, DataType_Int32 ) ) != null )
       this.combination[ i ] = o;
     if ( ( o = loadIndexed( "rejection", i, DataType_Int32 ) ) != null )
@@ -2681,7 +2731,7 @@ StackEngine.prototype.loadSettings = function()
     this.useTriangleSimilarity = o;
   if ( ( o = load( "integrate", DataType_Boolean ) ) != null )
     this.integrate = o;
-  if ( this.saveSession )
+  if ( this.saveFrameGroups )
     if ( ( o = load( "frameGroups", DataType_String ) ) != null )
       this.framesGroupsFromStringData( o );
 };
@@ -2698,7 +2748,7 @@ StackEngine.prototype.saveSettings = function()
     save( key + '_' + index.toString(), type, value );
   }
 
-  save( "saveSession", DataType_Boolean, this.saveSession );
+  save( "saveFrameGroups", DataType_Boolean, this.saveFrameGroups );
   save( "cfaImages", DataType_Boolean, this.cfaImages );
   save( "upBottomFITS", DataType_Boolean, this.upBottomFITS );
   save( "exportCalibrationFiles", DataType_Boolean, this.exportCalibrationFiles );
@@ -2730,6 +2780,8 @@ StackEngine.prototype.saveSettings = function()
 
   for ( var i = 0; i < 4; ++i )
   {
+    if ( this.saveFrameGroups )
+      saveIndexed( "useAsMaster", i, DataType_Boolean, this.useAsMaster[ i ] );
     saveIndexed( "combination", i, DataType_Int32, this.combination[ i ] );
     saveIndexed( "rejection", i, DataType_Int32, this.rejection[ i ] );
     saveIndexed( "minMaxLow", i, DataType_Int32, this.minMaxLow[ i ] );
@@ -2767,7 +2819,7 @@ StackEngine.prototype.saveSettings = function()
   save( "useTriangleSimilarity", DataType_Boolean, this.useTriangleSimilarity );
   save( "integrate", DataType_Boolean, this.integrate );
 
-  if ( this.saveSession )
+  if ( this.saveFrameGroups )
     save( "frameGroups", DataType_String, this.framesGroupsToStringData() );
   else
     save( "frameGroups", DataType_String, "[]" );
@@ -2781,7 +2833,7 @@ StackEngine.prototype.setDefaultParameters = function()
 function setDefaultParameters()
 {
   // General options
-  this.saveSession = DEFAULT_SAVE_SESSION;
+  this.saveFrameGroups = DEFAULT_SAVE_FRAME_GROUPS;
   this.outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
   this.cfaImages = DEFAULT_CFA_IMAGES;
   this.upBottomFITS = DEFAULT_UP_BOTTOM_FITS;
@@ -2870,8 +2922,8 @@ StackEngine.prototype.importParameters = function()
   this.setDefaultParameters();
   this.loadSettings();
 
-  if ( Parameters.has( "saveSession" ) )
-    this.saveSession = Parameters.getBoolean( "saveSession" );
+  if ( Parameters.has( "saveFrameGroups" ) )
+    this.saveFrameGroups = Parameters.getBoolean( "saveFrameGroups" );
 
   if ( Parameters.has( "outputDirectory" ) )
     this.outputDirectory = Parameters.getString( "outputDirectory" );
@@ -3077,7 +3129,7 @@ StackEngine.prototype.importParameters = function()
   if ( Parameters.has( "integrate" ) )
     this.integrate = Parameters.getBoolean( "integrate" );
 
-  if ( this.saveSession )
+  if ( this.saveFrameGroups )
     if ( Parameters.has( "frameGroups" ) )
       this.framesGroupsFromStringData( Parameters.getString( "frameGroups" ) );
 };
@@ -3088,7 +3140,7 @@ StackEngine.prototype.exportParameters = function()
 
   Parameters.set( "version", VERSION );
 
-  Parameters.set( "saveSession", this.saveSession );
+  Parameters.set( "saveFrameGroups", this.saveFrameGroups );
   Parameters.set( "outputDirectory", this.outputDirectory );
   Parameters.set( "cfaImages", this.cfaImages );
   Parameters.set( "upBottomFITS", this.upBottomFITS );
@@ -3174,7 +3226,7 @@ StackEngine.prototype.exportParameters = function()
 
   Parameters.set( "integrate", this.integrate );
 
-  if ( this.saveSession )
+  if ( this.saveFrameGroups )
     Parameters.set( "frameGroups", this.framesGroupsToStringData() );
   else
     Parameters.set( "frameGroups", "[]" );

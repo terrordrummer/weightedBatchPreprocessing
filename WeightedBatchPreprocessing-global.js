@@ -63,6 +63,8 @@
 
 #define SETTINGS_KEY_BASE "WeightedBatchPreprocessing/"
 
+#define WEIGHT_KEYWORD "WBPPWGTH"
+
 var ImageType = {
   UNKNOWN: -1,
   BIAS: 0,
@@ -72,7 +74,7 @@ var ImageType = {
 };
 
 // Default parameters
-#define DEFAULT_SAVE_SESSION                          true
+#define DEFAULT_SAVE_FRAME_GROUPS                     false
 #define DEFAULT_OUTPUT_DIRECTORY                      ""
 #define DEFAULT_CFA_IMAGES                            false
 #define DEFAULT_UP_BOTTOM_FITS                        true
@@ -127,6 +129,7 @@ var ImageType = {
 
 // CONSTANTS
 
+#define CONST_MIN_EXPOSURE_TOLERANCE 0.01
 #define CONST_FLAT_DARK_TOLERANCE 0.5
 
 /* beautify ignore:end */

@@ -1433,9 +1433,9 @@ function SubframesWeightingControl( parent )
   this.subframesWeightCheckBox = new CheckBox( this );
   this.subframesWeightCheckBox.text = "Generate subrames weights";
   this.subframesWeightCheckBox.checked = engine.generateSubframesWeights;
-  this.subframesWeightCheckBox.toolTip = "<p>Analyze subs quality and embed the correspondent weight to each sub. " +
-    "These weights are assigned to the SWWeight key which can later be used with the ImageIntegration and DrizzleIntegration tools to " +
-    "perform a drizzle integration process.</p>";
+  this.subframesWeightCheckBox.toolTip = "<p>If this option is checked light frames will be analyzed and weighted " +
+    "accordingly to the relative weights assigned to FWHM, eccentricity and SNR. " +
+    "Weights are saved into the image as WBPPWGTH header key which will be used during the ImageIntegration process.</p>";
   this.subframesWeightCheckBox.onCheck = function( checked )
   {
     engine.generateSubframesWeights = checked;
@@ -1458,8 +1458,8 @@ function SubframesWeightingControl( parent )
   this.subframesWeightAfterRegistrationCheckBox = new CheckBox( this );
   this.subframesWeightAfterRegistrationCheckBox.text = "Compute weights after registration";
   this.subframesWeightAfterRegistrationCheckBox.checked = engine.generateSubframesWeightsAfterRegistration;
-  this.subframesWeightAfterRegistrationCheckBox.toolTip = "<p>Check this option if you prefer to " +
-    "compute weights on registered images instead of computing weights on calibrated images.</p>";
+  this.subframesWeightAfterRegistrationCheckBox.toolTip = "<p>Check this option to " +
+    "compute frame weights after registration, uncheck it if you want to compute frame weights before.</p>";
   this.subframesWeightAfterRegistrationCheckBox.onCheck = function( checked )
   {
     engine.generateSubframesWeightsAfterRegistration = checked;
@@ -1516,6 +1516,7 @@ function SubframesWeightingControl( parent )
     this.subframesWeightCheckBox.checked = engine.generateSubframesWeights;
     this.subframesWeightUseBestReferenceCheckBox.checked = engine.useBestLightAsReference;
     this.subframesWeightAfterRegistrationCheckBox.checked = engine.generateSubframesWeightsAfterRegistration;
+    this.subframesWeightAfterRegistrationCheckBox.enabled = engine.generateSubframesWeights;
     this.enabled = !engine.calibrateOnly;
   };
 }
@@ -2577,11 +2578,11 @@ function StackDialog()
   };
 
   this.saveSessionCheckBox = new CheckBox( this );
-  this.saveSessionCheckBox.text = "Save groups on exit";
-  this.saveSessionCheckBox.toolTip = "<p>When this option is selected  file groups will be saved before closing and they will be reloaded on next launch.</p><p>Select this option if you need to close the dialog to check the master integration files and reopen it without loosing the file groups.</p>";
+  this.saveSessionCheckBox.text = "Save frame groups on exit";
+  this.saveSessionCheckBox.toolTip = "<p>When this option is selected frame groups will be saved before closing the dialog. Thhey will be reloaded on next launch.</p><p>Select this option if you need to close the dialog to check the master integration files and relaunch the script without loosing the file groups content.</p>";
   this.saveSessionCheckBox.onCheck = function( checked )
   {
-    engine.saveSession = checked;
+    engine.saveFrameGroups = checked;
     this.dialog.updateControls();
   };
 
@@ -2813,7 +2814,7 @@ StackDialog.prototype.updateControls = function()
   this.useAsMasterBiasCheckBox.checked = engine.useAsMaster[ ImageType.BIAS ];
   this.useAsMasterDarkCheckBox.checked = engine.useAsMaster[ ImageType.DARK ];
   this.useAsMasterFlatCheckBox.checked = engine.useAsMaster[ ImageType.FLAT ];
-  this.saveSessionCheckBox.checked = engine.saveSession;
+  this.saveSessionCheckBox.checked = engine.saveFrameGroups;
   this.referenceImageEdit.text = engine.useBestLightAsReference ? 'auto' : engine.referenceImage;
   this.outputDirectoryEdit.text = engine.outputDirectory;
   this.referenceImageEdit.enabled = !engine.useBestLightAsReference;
