@@ -61,7 +61,7 @@
 
 // ----------------------------------------------------------------------------
 
-function FileItem( filePath, imageType, filter, binning, exposureTime )
+function FileItem( filePath, imageType, filter, binning, exposureTime, isCFA )
 {
   this.__base__ = Object;
   this.__base__();
@@ -72,6 +72,7 @@ function FileItem( filePath, imageType, filter, binning, exposureTime )
   this.filter = filter;
   this.exposureTime = exposureTime;
   this.enabled = true;
+  this.isCFA = isCFA
 }
 
 FileItem.prototype = new Object;
@@ -91,6 +92,9 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   this.masterFrame = masterFrame;
   this.enabled = true;
   this.fileItems = new Array;
+  // containsCFA property is true if at least one image is CFA, false otherwise
+  // nb: firstItem.isCFA could be undefined if no explicit info has been found regarding CFA or colorspace while loading the file
+  this.containsCFA = firstItem !== undefined ? firstItem.isCFA === true : false;
 
   if ( firstItem != null ) // we pass null from importParameters()
     this.fileItems.push( firstItem );
@@ -732,53 +736,57 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
   if ( !forcedExposureTime || imageType == ImageType.BIAS )
     exposureTime = 0;
 
-  if ( !forcedType || !forcedFilter || !forcedBinning || !forcedExposureTime )
+  // assume image is NOT CFA unless the bayer pattern is found in the header
+  var isCFA = false;
+
+  var ext = File.extractExtension( filePath ).toLowerCase();
+  var F = new FileFormat( ext, true /*toRead*/ , false /*toWrite*/ );
+  if ( F.isNull )
+    throw new Error( "No installed file format can read \'" + ext + "\' files." ); // shouldn't happen
+  var f = new FileFormatInstance( F );
+  if ( f.isNull )
+    throw new Error( "Unable to instantiate file format: " + F.name );
+
+  var info = f.open( filePath, "verbosity 0" ); // do not fill the console with useless messages
+  if ( info.length <= 0 )
+    throw new Error( "Unable to open input file: " + filePath );
+
+  var keywords = [];
+  if ( F.canStoreKeywords )
+    keywords = f.keywords;
+
+  f.close();
+
+  for ( var i = 0; i < keywords.length; ++i )
   {
-    var ext = File.extractExtension( filePath ).toLowerCase();
-    var F = new FileFormat( ext, true /*toRead*/ , false /*toWrite*/ );
-    if ( F.isNull )
-      throw new Error( "No installed file format can read \'" + ext + "\' files." ); // shouldn't happen
-    var f = new FileFormatInstance( F );
-    if ( f.isNull )
-      throw new Error( "Unable to instantiate file format: " + F.name );
-
-    var info = f.open( filePath, "verbosity 0" ); // do not fill the console with useless messages
-    if ( info.length <= 0 )
-      throw new Error( "Unable to open input file: " + filePath );
-
-    var keywords = [];
-    if ( F.canStoreKeywords )
-      keywords = f.keywords;
-
-    f.close();
-
-    for ( var i = 0; i < keywords.length; ++i )
+    var value = keywords[ i ].strippedValue.trim();
+    switch ( keywords[ i ].name )
     {
-      var value = keywords[ i ].strippedValue.trim();
-      switch ( keywords[ i ].name )
-      {
-        case "IMAGETYP":
-          if ( !forcedType )
-            imageType = StackEngine.imageTypeFromKeyword( value );
-          break;
-        case "FILTER":
-        case "INSFLNAM":
-          if ( !forcedFilter )
-            filter = value;
-          break;
-        case "XBINNING":
-        case "BINNING":
-        case "CCDBINX":
-          if ( !forcedBinning )
-            binning = parseInt( value );
-          break;
-        case "EXPTIME":
-        case "EXPOSURE":
-          if ( !forcedExposureTime && imageType == ImageType.BIAS )
-            exposureTime = parseFloat( value );
-          break;
-      }
+      case "IMAGETYP":
+        if ( !forcedType )
+          imageType = StackEngine.imageTypeFromKeyword( value );
+        break;
+      case "FILTER":
+      case "INSFLNAM":
+        if ( !forcedFilter )
+          filter = value;
+        break;
+      case "XBINNING":
+      case "BINNING":
+      case "CCDBINX":
+        if ( !forcedBinning )
+          binning = parseInt( value );
+        break;
+      case "EXPTIME":
+      case "EXPOSURE":
+        if ( !forcedExposureTime && imageType == ImageType.BIAS )
+          exposureTime = parseFloat( value );
+        break;
+      case "BAYERPAT":
+        isCFA = true;
+        break;
     }
+
 
     if ( !forcedExposureTime )
       if ( exposureTime <= 0 )
@@ -817,7 +825,7 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
       break;
   }
 
-  var item = new FileItem( filePath, imageType, filter ? filter : "NoFilter", binning, exposureTime );
+  var item = new FileItem( filePath, imageType, filter ? filter : "NoFilter", binning, exposureTime, isCFA );
 
   if ( this.frameGroups.length > 0 )
   {
@@ -833,6 +841,8 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
         this.frameGroups[ i ].fileItems.push( item );
       }
       this.frameGroups[ i ].addExposureTime( exposureTime );
+      if ( isCFA )
+        this.frameGroups[ i ].containsCFA = true;
       return true;
     }
   }
@@ -3472,6 +3482,12 @@ StackEngine.prototype.runDiagnostics = function()
             }
           if ( !haveFlats && this.hasFlatFrames() )
             this.warning( "No matching flat frames have been found to calibrate " + this.frameGroups[ i ].toString() );
+
+          // check if light group contains CFA images, in this case the CFA global flag should be checked
+          if ( this.frameGroups[ i ].containsCFA && !this.cfaImages )
+          {
+            this.warning( "Group " + this.frameGroups[ i ].toString() + " contains CFA images, the global 'CFA Images' option should be checked." );
+          }
         }
     }
 
