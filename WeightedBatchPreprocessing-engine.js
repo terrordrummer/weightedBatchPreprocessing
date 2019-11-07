@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-engine.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.3.1
+// This file is part of Weighted Batch Preprocessing Script version 1.3.2
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -94,9 +94,9 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   this.fileItems = new Array;
   // containsCFA property is true if at least one image is CFA, false otherwise
   // nb: firstItem.isCFA could be undefined if no explicit info has been found regarding CFA or colorspace while loading the file
-  this.containsCFA = firstItem !== undefined ? firstItem.isCFA === true : false;
+  this.containsCFA = firstItem ? firstItem.isCFA === true : false;
 
-  if ( firstItem != null ) // we pass null from importParameters()
+  if ( firstItem ) // we pass null from importParameters()
     this.fileItems.push( firstItem );
 
   this.sameParameters = function( imageType, filter, binning, exposureTime, exposureTolerance, groupLightsOfDifferentExposure )
@@ -3481,7 +3481,7 @@ StackEngine.prototype.runDiagnostics = function()
               }
             }
           if ( !haveFlats && this.hasFlatFrames() )
-            this.warning( "No matching flat frames have been found to calibrate " + this.frameGroups[ i ].toString() );
+            this.warning( "No matching master flat frame have been found to calibrate " + this.frameGroups[ i ].toString() );
 
           // check if light group contains CFA images, in this case the CFA global flag should be checked
           if ( this.frameGroups[ i ].containsCFA && !this.cfaImages )

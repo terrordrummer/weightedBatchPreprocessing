@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-GUI.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.3.1
+// This file is part of Weighted Batch Preprocessing Script version 1.3.2
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -1829,7 +1829,7 @@ function FileControl( parent, imageType )
       this.calibrateOnlySizer.addStretch();
 
       this.groupLightsWithDifferentExposureCheckBox = new CheckBox( this );
-      this.groupLightsWithDifferentExposureCheckBox.text = "Group lights with different exposures";
+      this.groupLightsWithDifferentExposureCheckBox.text = "Group lights with different exposure";
       this.groupLightsWithDifferentExposureCheckBox.toolTip = "<p>When this option is active light frames with same binning and filter will be grouped and integrated together even if they have different exposures.</p>";
       this.groupLightsWithDifferentExposureCheckBox.onCheck = function( checked )
       {
