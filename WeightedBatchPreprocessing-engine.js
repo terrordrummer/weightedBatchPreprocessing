@@ -1092,85 +1092,80 @@ StackEngine.prototype.writeImage = function( filePath,
   f.close();
 };
 
-StackEngine.prototype.rejectionNames = function()
+StackEngine.prototype.rejectionMethods = function()
 {
-  var names = [
-    "No rejection",
-    "Min/Max",
-    "Percentile Clipping",
-    "Sigma Clipping",
-    "Winsorized Sigma Clipping",
-    "Averaged Sigma Clipping",
-    "Linear Fit Clipping"
-  ];
+  var methods = [
+  {
+    name: "No rejection",
+    rejection: ImageIntegration.prototype.NoRejection
+  },
+  {
+    name: "Min/Max",
+    rejection: ImageIntegration.prototype.MinMax
+  },
+  {
+    name: "Percentile Clipping",
+    rejection: ImageIntegration.prototype.PercentileClip
+  },
+  {
+    name: "Sigma Clipping",
+    rejection: ImageIntegration.prototype.SigmaClip
+  },
+  {
+    name: "Winsorized Sigma Clipping",
+    rejection: ImageIntegration.prototype.WinsorizedSigmaClip
+  },
+  {
+    name: "Linear Fit Clipping",
+    rejection: ImageIntegration.prototype.LinearFit
+  } ];
+
   if ( ImageIntegration.prototype.Rejection_ESD )
   {
-    names.push( "Generalized Extreme Studentized Deviate" );
+    methods.push(
+    {
+      name: "Generalized Extreme Studentized Deviate",
+      rejection: ImageIntegration.prototype.Rejection_ESD
+    } )
   }
-  names.push( "Auto" );
-  return names;
+
+  methods.push(
+  {
+    name: "Auto",
+    rejection: ImageIntegration.prototype.auto
+  } )
+  return methods
 }
 
-StackEngine.prototype.rejectionFromName = function( name )
+StackEngine.prototype.rejectionNames = function()
 {
-  switch ( name )
-  {
-    case "No rejection":
-      return ImageIntegration.prototype.NoRejection;
-    case "Min/Max":
-      return ImageIntegration.prototype.MinMax;
-    case "Percentile Clipping":
-      return ImageIntegration.prototype.PercentileClip;
-    case "Sigma Clipping":
-      return ImageIntegration.prototype.SigmaClip;
-    case "Winsorized Sigma Clipping":
-      return ImageIntegration.prototype.WinsorizedSigmaClip;
-    case "Averaged Sigma Clipping":
-      return ImageIntegration.prototype.AveragedSigmaClip;
-    case "Linear Fit Clipping":
-      return ImageIntegration.prototype.LinearFit;
-    case "Generalized Extreme Studentized Deviate":
-      return ImageIntegration.prototype.Rejection_ESD;
-  }
-
-  return ImageIntegration.prototype.auto;
+  return this.rejectionMethods().map( item => item.name );
 }
 
 StackEngine.prototype.rejectionFromIndex = function( index )
 {
-  let rejectionNames = this.rejectionNames();
-  let rejectionName = rejectionNames[ index ];
-  return this.rejectionFromName( rejectionName );
+  let methods = this.rejectionMethods();
+  return methods[ index ].rejection;
 }
 
 StackEngine.prototype.rejectionName = function( rejection )
 {
-  switch ( rejection )
-  {
-    case ImageIntegration.prototype.NoRejection:
-      return "No rejection";
-    case ImageIntegration.prototype.MinMax:
-      return "Min/Max";
-    case ImageIntegration.prototype.PercentileClip:
-      return "Percentile Clipping";
-    case ImageIntegration.prototype.SigmaClip:
-      return "Sigma Clipping";
-    case ImageIntegration.prototype.WinsorizedSigmaClip:
-      return "Winsorized Sigma Clipping";
-    case ImageIntegration.prototype.AveragedSigmaClip:
-      return "Averaged Sigma Clipping";
-    case ImageIntegration.prototype.LinearFit:
-      return "Linear Fit Clipping";
-    case ImageIntegration.prototype.Rejection_ESD:
-      return "Generalized Extreme Studentized Deviate";
-  }
+  let methods = this.rejectionMethods();
+  for ( let i = 0; i < methods.length; ++i )
+    if ( methods[ i ].rejection === rejection )
+      return methods[ i ].name
 
-  return "Auto";
+  return methods[ methods.length - 1 ].name;
 }
 
 StackEngine.prototype.rejectionIndex = function( rejection )
 {
-  return this.rejectionNames().map( name => this.rejectionFromName( name ) ).indexOf( rejection );
+  let methods = this.rejectionMethods();
+  for ( let i = 0; i < methods.length; ++i )
+    if ( methods[ i ].rejection === rejection )
+      return i;
+
+  return methods.length - 1;
 }
 
 /*

@@ -714,44 +714,48 @@ function ImageIntegrationControl( parent, imageType, expand )
 
   //
 
-  this.ESD_OutliersControl = new NumericControl( this );
-  this.ESD_OutliersControl.label.text = "ESD outliers:";
-  this.ESD_OutliersControl.label.minWidth = this.dialog.labelWidth1;
-  this.ESD_OutliersControl.setRange( 0, 1 );
-  this.ESD_OutliersControl.slider.setRange( 0, 1000 );
-  this.ESD_OutliersControl.slider.scaledMinWidth = 200;
-  this.ESD_OutliersControl.setPrecision( 2 );
-  this.ESD_OutliersControl.setValue( 0.3 );
-  this.ESD_OutliersControl.edit.setFixedWidth( this.dialog.numericEditWidth );
-  this.ESD_OutliersControl.toolTip = "<p>Expected maximum fraction of outliers for the generalized ESD rejection algotirhm.</p>" +
-    "<p>For example, a value of 0.2 applied to a stack of 10 pixels means that the ESD algorithm will be limited to detect a maximum of " +
-    "two outlier pixels, or in other words, only 0, 1 or 2 outliers will be detectable in such case. The default value is 0.3, which allows the algorithm " +
-    "to detect up to a 30% of outlier pixels in each pixel stack.</p>";
-  this.ESD_OutliersControl.onValueUpdated = function( value )
+  if ( ImageIntegration.prototype.Rejection_ESD )
   {
-    engine.ESD_Outliers[ this.parent.parent.imageType ] = value;
-  };
+    this.ESD_OutliersControl = new NumericControl( this );
+    this.ESD_OutliersControl.label.text = "ESD outliers:";
+    this.ESD_OutliersControl.label.minWidth = this.dialog.labelWidth1;
+    this.ESD_OutliersControl.setRange( 0, 1 );
+    this.ESD_OutliersControl.slider.setRange( 0, 1000 );
+    this.ESD_OutliersControl.slider.scaledMinWidth = 200;
+    this.ESD_OutliersControl.setPrecision( 2 );
+    this.ESD_OutliersControl.setValue( 0.3 );
+    this.ESD_OutliersControl.edit.setFixedWidth( this.dialog.numericEditWidth );
+    this.ESD_OutliersControl.toolTip = "<p>Expected maximum fraction of outliers for the generalized ESD rejection algotirhm.</p>" +
+      "<p>For example, a value of 0.2 applied to a stack of 10 pixels means that the ESD algorithm will be limited to detect a maximum of " +
+      "two outlier pixels, or in other words, only 0, 1 or 2 outliers will be detectable in such case. The default value is 0.3, which allows the algorithm " +
+      "to detect up to a 30% of outlier pixels in each pixel stack.</p>";
+    this.ESD_OutliersControl.onValueUpdated = function( value )
+    {
+      engine.ESD_Outliers[ this.parent.parent.imageType ] = value;
+    };
+  }
 
   //
-
-  this.ESD_SignificanceControl = new NumericControl( this );
-  this.ESD_SignificanceControl.label.text = "ESD significance:";
-  this.ESD_SignificanceControl.label.minWidth = this.dialog.labelWidth1;
-  this.ESD_SignificanceControl.setRange( 0, 1 );
-  this.ESD_SignificanceControl.slider.setRange( 0, 1000 );
-  this.ESD_SignificanceControl.slider.scaledMinWidth = 200;
-  this.ESD_SignificanceControl.setPrecision( 2 );
-  this.ESD_SignificanceControl.setValue( 0.05 );
-  this.ESD_SignificanceControl.edit.setFixedWidth( this.dialog.numericEditWidth );
-  this.ESD_SignificanceControl.toolTip = "<p>Probability of making a type 1 error (false positive) in the generalized ESD rejection algorithm.</p>" +
-    "<p>This is the significance level of the outlier detection hypothesis test. For example, a significance level of 0.01 means that a 1% chance " +
-    "of being wrong when rejecting the null hypothesis (that there are no outliers in a given pixel stack) is acceptable. The default value is 0.05 " +
-    "(5% significance level).</p>";
-  this.ESD_SignificanceControl.onValueUpdated = function( value )
+  if ( ImageIntegration.prototype.Rejection_ESD )
   {
-    engine.ESD_Significance[ this.parent.parent.imageType ] = value;
-  };
-
+    this.ESD_SignificanceControl = new NumericControl( this );
+    this.ESD_SignificanceControl.label.text = "ESD significance:";
+    this.ESD_SignificanceControl.label.minWidth = this.dialog.labelWidth1;
+    this.ESD_SignificanceControl.setRange( 0, 1 );
+    this.ESD_SignificanceControl.slider.setRange( 0, 1000 );
+    this.ESD_SignificanceControl.slider.scaledMinWidth = 200;
+    this.ESD_SignificanceControl.setPrecision( 2 );
+    this.ESD_SignificanceControl.setValue( 0.05 );
+    this.ESD_SignificanceControl.edit.setFixedWidth( this.dialog.numericEditWidth );
+    this.ESD_SignificanceControl.toolTip = "<p>Probability of making a type 1 error (false positive) in the generalized ESD rejection algorithm.</p>" +
+      "<p>This is the significance level of the outlier detection hypothesis test. For example, a significance level of 0.01 means that a 1% chance " +
+      "of being wrong when rejecting the null hypothesis (that there are no outliers in a given pixel stack) is acceptable. The default value is 0.05 " +
+      "(5% significance level).</p>";
+    this.ESD_SignificanceControl.onValueUpdated = function( value )
+    {
+      engine.ESD_Significance[ this.parent.parent.imageType ] = value;
+    };
+  }
   //
 
   this.add( this.combinationSizer );
@@ -764,8 +768,11 @@ function ImageIntegrationControl( parent, imageType, expand )
   this.add( this.sigmaHighControl );
   this.add( this.linearFitLowControl );
   this.add( this.linearFitHighControl );
-  this.add( this.ESD_OutliersControl );
-  this.add( this.ESD_SignificanceControl );
+  if ( ImageIntegration.prototype.Rejection_ESD )
+  {
+    this.add( this.ESD_OutliersControl );
+    this.add( this.ESD_SignificanceControl );
+  }
 
 
   if ( this.imageType == ImageType.FLAT )
@@ -856,8 +863,11 @@ function ImageIntegrationControl( parent, imageType, expand )
     this.sigmaHighControl.setValue( engine.sigmaHigh[ this.imageType ] );
     this.linearFitLowControl.setValue( engine.linearFitLow[ this.imageType ] );
     this.linearFitHighControl.setValue( engine.linearFitHigh[ this.imageType ] );
-    this.ESD_OutliersControl.setValue( engine.ESD_Outliers[ this.imageType ] );
-    this.ESD_SignificanceControl.setValue( engine.ESD_Significance[ this.imageType ] );
+    if ( ImageIntegration.prototype.Rejection_ESD )
+    {
+      this.ESD_OutliersControl.setValue( engine.ESD_Outliers[ this.imageType ] );
+      this.ESD_SignificanceControl.setValue( engine.ESD_Significance[ this.imageType ] );
+    }
 
     this.minMaxLowLabel.enabled = false;
     this.minMaxLowSpinBox.enabled = false;
@@ -869,8 +879,11 @@ function ImageIntegrationControl( parent, imageType, expand )
     this.sigmaHighControl.enabled = false;
     this.linearFitLowControl.enabled = false;
     this.linearFitHighControl.enabled = false;
-    this.ESD_OutliersControl.enabled = false;
-    this.ESD_SignificanceControl.enabled = false;
+    if ( ImageIntegration.prototype.Rejection_ESD )
+    {
+      this.ESD_OutliersControl.enabled = false;
+      this.ESD_SignificanceControl.enabled = false;
+    }
 
     switch ( engine.rejection[ this.imageType ] )
     {
@@ -911,8 +924,11 @@ function ImageIntegrationControl( parent, imageType, expand )
         this.sigmaHighControl.enabled = true;
         this.linearFitLowControl.enabled = true;
         this.linearFitHighControl.enabled = true;
-        this.ESD_OutliersControl.enabled = true;
-        this.ESD_SignificanceControl.enabled = true;
+        if ( ImageIntegration.prototype.Rejection_ESD )
+        {
+          this.ESD_OutliersControl.enabled = true;
+          this.ESD_SignificanceControl.enabled = true;
+        }
 
     }
 
