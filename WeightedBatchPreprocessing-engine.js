@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-engine.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.3.2
+// This file is part of Weighted Batch Preprocessing Script version 1.3.3
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -123,7 +123,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   this.rejectionIsGood = function( rejection )
   {
 
-    if ( rejection > ImageIntegration.prototype.LinearFit )
+    if ( rejection == ImageIntegration.prototype.auto )
     {
       return [ true, "" ];
     }
@@ -140,7 +140,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
       default:
         break;
     }
-    let selectedRejection = rejection <= ImageIntegration.prototype.LinearFit ? rejection : this.bestRejectionMethod();
+    let selectedRejection = rejection !== ImageIntegration.prototype.auto ? rejection : this.bestRejectionMethod();
 
     // Selections dependent on the number of frames
     var n = this.fileItems.length;
@@ -172,6 +172,13 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
         if ( n < 20 )
           return [ false, "Linear fit clipping may not be better than Winsorized sigma clipping for sets of less than 15-20 images" ];
         break;
+      case ImageIntegration.prototype.Rejection_ESD:
+        if ( n < 8 )
+          return [ false, "ESD requires at least 15 images to provide reliable results; consider using percentile clipping" ];
+        if ( n < 20 )
+          return [ false, "ESD may not be better than Winsorized sigma clipping for sets of less than 20 images" ];
+        if ( n < 25 )
+          return [ false, "ESD  may not be better than Linear Fit clipping sigma clipping for sets of less than 20-25 images" ];
       default: // ?!
         break;
     }
@@ -194,7 +201,12 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
     {
       return ImageIntegration.prototype.WinsorizedSigmaClip;
     }
-    return ImageIntegration.prototype.LinearFit;
+    // if ESD is not defined (PI 1.8.7 or below) then use LinearFit
+    if ( n < 25 || ImageIntegration.prototype.Rejection_ESD === undefined )
+    {
+      return ImageIntegration.prototype.LinearFit;
+    }
+    return ImageIntegration.prototype.Rejection_ESD;
   }
 
   this.addExposureTime = function( time )
@@ -375,6 +387,8 @@ function StackEngine()
   this.sigmaHigh = new Array( 4 );
   this.linearFitLow = new Array( 4 );
   this.linearFitHigh = new Array( 4 );
+  this.ESD_Outliers = new Array( 4 );
+  this.ESD_Significance = new Array( 4 );
 
   // default parameters
   setDefaultParameters.apply( this );
@@ -1077,6 +1091,87 @@ StackEngine.prototype.writeImage = function( filePath,
 
   f.close();
 };
+
+StackEngine.prototype.rejectionNames = function()
+{
+  var names = [
+    "No rejection",
+    "Min/Max",
+    "Percentile Clipping",
+    "Sigma Clipping",
+    "Winsorized Sigma Clipping",
+    "Averaged Sigma Clipping",
+    "Linear Fit Clipping"
+  ];
+  if ( ImageIntegration.prototype.Rejection_ESD )
+  {
+    names.push( "Generalized Extreme Studentized Deviate" );
+  }
+  names.push( "Auto" );
+  return names;
+}
+
+StackEngine.prototype.rejectionFromName = function( name )
+{
+  switch ( name )
+  {
+    case "No rejection":
+      return ImageIntegration.prototype.NoRejection;
+    case "Min/Max":
+      return ImageIntegration.prototype.MinMax;
+    case "Percentile Clipping":
+      return ImageIntegration.prototype.PercentileClip;
+    case "Sigma Clipping":
+      return ImageIntegration.prototype.SigmaClip;
+    case "Winsorized Sigma Clipping":
+      return ImageIntegration.prototype.WinsorizedSigmaClip;
+    case "Averaged Sigma Clipping":
+      return ImageIntegration.prototype.AveragedSigmaClip;
+    case "Linear Fit Clipping":
+      return ImageIntegration.prototype.LinearFit;
+    case "Generalized Extreme Studentized Deviate":
+      return ImageIntegration.prototype.Rejection_ESD;
+  }
+
+  return ImageIntegration.prototype.auto;
+}
+
+StackEngine.prototype.rejectionFromIndex = function( index )
+{
+  let rejectionNames = this.rejectionNames();
+  let rejectionName = rejectionNames[ index ];
+  return this.rejectionFromName( rejectionName );
+}
+
+StackEngine.prototype.rejectionName = function( rejection )
+{
+  switch ( rejection )
+  {
+    case ImageIntegration.prototype.NoRejection:
+      return "No rejection";
+    case ImageIntegration.prototype.MinMax:
+      return "Min/Max";
+    case ImageIntegration.prototype.PercentileClip:
+      return "Percentile Clipping";
+    case ImageIntegration.prototype.SigmaClip:
+      return "Sigma Clipping";
+    case ImageIntegration.prototype.WinsorizedSigmaClip:
+      return "Winsorized Sigma Clipping";
+    case ImageIntegration.prototype.AveragedSigmaClip:
+      return "Averaged Sigma Clipping";
+    case ImageIntegration.prototype.LinearFit:
+      return "Linear Fit Clipping";
+    case ImageIntegration.prototype.Rejection_ESD:
+      return "Generalized Extreme Studentized Deviate";
+  }
+
+  return "Auto";
+}
+
+StackEngine.prototype.rejectionIndex = function( rejection )
+{
+  return this.rejectionNames().map( name => this.rejectionFromName( name ) ).indexOf( rejection );
+}
 
 /*
  * Most of the following routines is a semplification of some functions that are implemented
@@ -2097,16 +2192,16 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
 
   frameGroup.log();
 
-  let selectedRejection = this.rejection[ imageType ] == -1 ? frameGroup.bestRejectionMethod() : this.rejection[ imageType ];
+  let selectedRejection = this.rejection[ imageType ] == ImageIntegration.prototype.auto ? frameGroup.bestRejectionMethod() : this.rejection[ imageType ];
 
-  if ( this.rejection[ imageType ] == -1 )
+  if ( this.rejection[ imageType ] == ImageIntegration.prototype.auto )
   {
-    console.noteln( 'Rejection method auto-selected: ', RejectionToString( selectedRejection ) );
-    this.processLogger.addMessage( 'Rejection method auto-selected: ' + RejectionToString( selectedRejection ) );
+    console.noteln( 'Rejection method auto-selected: ', engine.rejectionName( selectedRejection ) );
+    this.processLogger.addMessage( 'Rejection method auto-selected: ' + engine.rejectionName( selectedRejection ) );
   }
   else
   {
-    console.noteln( 'Rejection method ', RejectionToString( selectedRejection ) );
+    console.noteln( 'Rejection method ', engine.rejectionName( selectedRejection ) );
   }
   var II = new ImageIntegration;
 
@@ -2125,6 +2220,8 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   II.sigmaHigh = this.sigmaHigh[ imageType ];
   II.linearFitLow = this.linearFitLow[ imageType ];
   II.linearFitHigh = this.linearFitHigh[ imageType ]
+  II.esdOutliersFraction = this.ESD_Outliers[ imageType ];
+  II.esdAlpha = this.ESD_Significance[ imageType ]
   II.clipLow = true;
   II.clipHigh = true;
   II.largeScaleClipLow = false;
@@ -2688,6 +2785,10 @@ StackEngine.prototype.loadSettings = function()
       this.linearFitLow[ i ] = o;
     if ( ( o = loadIndexed( "linearFitHigh", i, DataType_Float ) ) != null )
       this.linearFitHigh[ i ] = o;
+    if ( ( o = loadIndexed( "ESD_Outliers", i, DataType_Float ) ) != null )
+      this.ESD_Outliers[ i ] = o;
+    if ( ( o = loadIndexed( "ESD_Significance", i, DataType_Float ) ) != null )
+      this.ESD_Significance[ i ] = o;
   }
 
   if ( ( o = load( "flatsLargeScaleRejection", DataType_Boolean ) ) != null )
@@ -2802,6 +2903,8 @@ StackEngine.prototype.saveSettings = function()
     saveIndexed( "sigmaHigh", i, DataType_Float, this.sigmaHigh[ i ] );
     saveIndexed( "linearFitLow", i, DataType_Float, this.linearFitLow[ i ] );
     saveIndexed( "linearFitHigh", i, DataType_Float, this.linearFitHigh[ i ] );
+    saveIndexed( "ESD_Outliers", i, DataType_Float, this.ESD_Outliers[ i ] );
+    saveIndexed( "ESD_Significance", i, DataType_Float, this.ESD_Significance[ i ] );
   }
 
   save( "flatsLargeScaleRejection", DataType_Boolean, this.flatsLargeScaleRejection );
@@ -2890,6 +2993,8 @@ function setDefaultParameters()
     this.sigmaHigh[ i ] = 3.0;
     this.linearFitLow[ i ] = 5.0;
     this.linearFitHigh[ i ] = 3.5;
+    this.ESD_Outliers[ i ] = 0.3;
+    this.ESD_Significance[ i ] = 0.05;
   }
 
   // Light
@@ -3050,6 +3155,12 @@ StackEngine.prototype.importParameters = function()
 
     if ( Parameters.hasIndexed( "linearFitHigh", i ) )
       this.linearFitHigh[ i ] = Parameters.getRealIndexed( "linearFitHigh", i );
+
+    if ( Parameters.hasIndexed( "ESD_Outliers", i ) )
+      this.ESD_Outliers[ i ] = Parameters.getRealIndexed( "ESD_Outliers", i );
+
+    if ( Parameters.hasIndexed( "ESD_Significance", i ) )
+      this.ESD_Significance[ i ] = Parameters.getRealIndexed( "ESD_Significance", i );
   }
 
   if ( Parameters.has( "flatsLargeScaleRejection" ) )
@@ -3199,6 +3310,8 @@ StackEngine.prototype.exportParameters = function()
     Parameters.setIndexed( "sigmaHigh", i, this.sigmaHigh[ i ] );
     Parameters.setIndexed( "linearFitLow", i, this.linearFitLow[ i ] );
     Parameters.setIndexed( "linearFitHigh", i, this.linearFitHigh[ i ] );
+    Parameters.setIndexed( "ESD_Outliers", i, this.ESD_Outliers[ i ] );
+    Parameters.setIndexed( "ESD_Significance", i, this.ESD_Significance[ i ] );
   }
 
   Parameters.set( "flatsLargeScaleRejection", this.flatsLargeScaleRejection );

@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-GUI.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.3.2
+// This file is part of Weighted Batch Preprocessing Script version 1.3.3
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -512,17 +512,11 @@ function ImageIntegrationControl( parent, imageType, expand )
   this.rejectionAlgorithmLabel.textAlignment = TextAlign_Right | TextAlign_VertCenter;
 
   this.rejectionAlgorithmComboBox = new ComboBox( this );
-  this.rejectionAlgorithmComboBox.addItem( "No rejection" );
-  this.rejectionAlgorithmComboBox.addItem( "Min/Max" );
-  this.rejectionAlgorithmComboBox.addItem( "Percentile Clipping" );
-  this.rejectionAlgorithmComboBox.addItem( "Sigma Clipping" );
-  this.rejectionAlgorithmComboBox.addItem( "Winsorized Sigma Clipping" );
-  this.rejectionAlgorithmComboBox.addItem( "Averaged Sigma Clipping" );
-  this.rejectionAlgorithmComboBox.addItem( "Linear Fit Clipping" );
-  this.rejectionAlgorithmComboBox.addItem( "Auto" );
+  let names = engine.rejectionNames();
+  names.forEach( item => this.rejectionAlgorithmComboBox.addItem( item ) );
   this.rejectionAlgorithmComboBox.onItemSelected = function( item )
   {
-    engine.rejection[ this.parent.parent.imageType ] = item;
+    engine.rejection[ this.parent.parent.imageType ] = engine.rejectionFromIndex( item );
     this.parent.parent.updateControls();
   };
 
@@ -547,6 +541,14 @@ function ImageIntegrationControl( parent, imageType, expand )
     "algorithm is more robust than sigma clipping for large sets of images, especially in presence of " +
     "additive sky gradients of varying intensity and spatial distribution. For the best performance, use " +
     "this algorithm for large sets of at least 15 images. Five images is the minimum required.</p>" +
+    "<p>The <b>Generalized Extreme Studentized Deviate (ESD) Test</b> rejection algorithm is an " +
+    "implementation of the method described by Bernard Rosner in his 1983 paper <i>Percentage " +
+    "Points for a Generalized ESD Many-Outlier procedure</i>, adapted to the image integration task.<br>" +
+    "The ESD algorithm assumes that each pixel stack, ni absence of outliers, follows an approximately " +
+    "normal (Gaussian) distribution. It aims at avoiding <i>masking</i>, a serious issue that occurs when " +
+    "an outlier goes undetected because its value is similar to another outlier. The performance of this algorithm" +
+    "can be excellent for large data sets of 25 or more images, and especially for very large sets of " +
+    "50 or more frames. The minimum required is 3 images.</p>" +
     "<p>The <b>min/max</b> method can be used to ensure rejection of extreme values. Min/max performs an " +
     "unconditional rejection of a fixed number of pixels from each stack, without any statistical basis. " +
     "Rejection methods based on robust statistics, such as percentile, Winsorized sigma clipping, linear " +
@@ -712,6 +714,46 @@ function ImageIntegrationControl( parent, imageType, expand )
 
   //
 
+  this.ESD_OutliersControl = new NumericControl( this );
+  this.ESD_OutliersControl.label.text = "ESD outliers:";
+  this.ESD_OutliersControl.label.minWidth = this.dialog.labelWidth1;
+  this.ESD_OutliersControl.setRange( 0, 1 );
+  this.ESD_OutliersControl.slider.setRange( 0, 1000 );
+  this.ESD_OutliersControl.slider.scaledMinWidth = 200;
+  this.ESD_OutliersControl.setPrecision( 2 );
+  this.ESD_OutliersControl.setValue( 0.3 );
+  this.ESD_OutliersControl.edit.setFixedWidth( this.dialog.numericEditWidth );
+  this.ESD_OutliersControl.toolTip = "<p>Expected maximum fraction of outliers for the generalized ESD rejection algotirhm.</p>" +
+    "<p>For example, a value of 0.2 applied to a stack of 10 pixels means that the ESD algorithm will be limited to detect a maximum of " +
+    "two outlier pixels, or in other words, only 0, 1 or 2 outliers will be detectable in such case. The default value is 0.3, which allows the algorithm " +
+    "to detect up to a 30% of outlier pixels in each pixel stack.</p>";
+  this.ESD_OutliersControl.onValueUpdated = function( value )
+  {
+    engine.ESD_Outliers[ this.parent.parent.imageType ] = value;
+  };
+
+  //
+
+  this.ESD_SignificanceControl = new NumericControl( this );
+  this.ESD_SignificanceControl.label.text = "ESD significance:";
+  this.ESD_SignificanceControl.label.minWidth = this.dialog.labelWidth1;
+  this.ESD_SignificanceControl.setRange( 0, 1 );
+  this.ESD_SignificanceControl.slider.setRange( 0, 1000 );
+  this.ESD_SignificanceControl.slider.scaledMinWidth = 200;
+  this.ESD_SignificanceControl.setPrecision( 2 );
+  this.ESD_SignificanceControl.setValue( 0.05 );
+  this.ESD_SignificanceControl.edit.setFixedWidth( this.dialog.numericEditWidth );
+  this.ESD_SignificanceControl.toolTip = "<p>Probability of making a type 1 error (false positive) in the generalized ESD rejection algorithm.</p>" +
+    "<p>This is the significance level of the outlier detection hypothesis test. For example, a significance level of 0.01 means that a 1% chance " +
+    "of being wrong when rejecting the null hypothesis (that there are no outliers in a given pixel stack) is acceptable. The default value is 0.05 " +
+    "(5% significance level).</p>";
+  this.ESD_SignificanceControl.onValueUpdated = function( value )
+  {
+    engine.ESD_Significance[ this.parent.parent.imageType ] = value;
+  };
+
+  //
+
   this.add( this.combinationSizer );
   this.add( this.rejectionAlgorithmSizer );
   this.add( this.minMaxLowSizer );
@@ -722,6 +764,9 @@ function ImageIntegrationControl( parent, imageType, expand )
   this.add( this.sigmaHighControl );
   this.add( this.linearFitLowControl );
   this.add( this.linearFitHighControl );
+  this.add( this.ESD_OutliersControl );
+  this.add( this.ESD_SignificanceControl );
+
 
   if ( this.imageType == ImageType.FLAT )
   {
@@ -802,7 +847,7 @@ function ImageIntegrationControl( parent, imageType, expand )
   this.updateControls = function()
   {
     this.combinationComboBox.currentItem = engine.combination[ this.imageType ];
-    this.rejectionAlgorithmComboBox.currentItem = engine.rejection[ this.imageType ];
+    this.rejectionAlgorithmComboBox.currentItem = engine.rejectionIndex( engine.rejection[ this.imageType ] );
     this.minMaxLowSpinBox.value = engine.minMaxLow[ this.imageType ];
     this.minMaxHighSpinBox.value = engine.minMaxHigh[ this.imageType ];
     this.percentileLowControl.setValue( engine.percentileLow[ this.imageType ] );
@@ -811,6 +856,8 @@ function ImageIntegrationControl( parent, imageType, expand )
     this.sigmaHighControl.setValue( engine.sigmaHigh[ this.imageType ] );
     this.linearFitLowControl.setValue( engine.linearFitLow[ this.imageType ] );
     this.linearFitHighControl.setValue( engine.linearFitHigh[ this.imageType ] );
+    this.ESD_OutliersControl.setValue( engine.ESD_Outliers[ this.imageType ] );
+    this.ESD_SignificanceControl.setValue( engine.ESD_Significance[ this.imageType ] );
 
     this.minMaxLowLabel.enabled = false;
     this.minMaxLowSpinBox.enabled = false;
@@ -822,6 +869,8 @@ function ImageIntegrationControl( parent, imageType, expand )
     this.sigmaHighControl.enabled = false;
     this.linearFitLowControl.enabled = false;
     this.linearFitHighControl.enabled = false;
+    this.ESD_OutliersControl.enabled = false;
+    this.ESD_SignificanceControl.enabled = false;
 
     switch ( engine.rejection[ this.imageType ] )
     {
@@ -847,7 +896,11 @@ function ImageIntegrationControl( parent, imageType, expand )
         this.linearFitLowControl.enabled = true;
         this.linearFitHighControl.enabled = true;
         break;
-      case ImageIntegration.prototype.LinearFit + 1:
+      case ImageIntegration.prototype.Rejection_ESD:
+        this.ESD_OutliersControl.enabled = true;
+        this.ESD_SignificanceControl.enabled = true;
+        break;
+      case ImageIntegration.prototype.auto:
         this.minMaxLowLabel.enabled = true;
         this.minMaxLowSpinBox.enabled = true;
         this.minMaxHighLabel.enabled = true;
@@ -858,6 +911,9 @@ function ImageIntegrationControl( parent, imageType, expand )
         this.sigmaHighControl.enabled = true;
         this.linearFitLowControl.enabled = true;
         this.linearFitHighControl.enabled = true;
+        this.ESD_OutliersControl.enabled = true;
+        this.ESD_SignificanceControl.enabled = true;
+
     }
 
     if ( this.imageType == ImageType.FLAT )

@@ -4,7 +4,7 @@
 // WeightedBatchPreprocessing-global.js - Released 2018-11-30T21:29:47Z
 // ----------------------------------------------------------------------------
 //
-// This file is part of Weighted Batch Preprocessing Script version 1.3.2
+// This file is part of Weighted Batch Preprocessing Script version 1.3.3
 //
 // Copyright (c) 2012 Kai Wiechen
 // Copyright (c) 2018 Roberto Sartori
@@ -57,7 +57,7 @@
 
 /* beautify ignore:start */
 
-#define VERSION "1.3.2"
+#define VERSION "1.3.3"
 
 #define TITLE "Weighted Batch Preprocessing Script"
 
@@ -72,6 +72,8 @@ var ImageType = {
   FLAT: 2,
   LIGHT: 3
 };
+
+ImageIntegration.prototype.auto = 999;
 
 // Default parameters
 #define DEFAULT_SAVE_FRAME_GROUPS                     false
@@ -89,7 +91,7 @@ var ImageType = {
 
 #define DEFAULT_EVALUATE_NOISE                        true
 
-#define DEFAULT_REJECTION_METHOD                      ImageIntegration.prototype.LinearFit + 1  // auto
+#define DEFAULT_REJECTION_METHOD                      ImageIntegration.prototype.auto
 
 #define DEFAULT_FLAT_DARKS_ONLY                       true
 #define DEFAULT_FLATS_LARGE_SCALE_REJECTION           false
