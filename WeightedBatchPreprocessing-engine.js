@@ -557,7 +557,7 @@ function ProcessLogDialog( processLogger )
   var info = processLogger.toString();
 
   this.infoLabel = new Label( this );
-  this.infoLabel.text = format( "Process log:" );
+  this.infoLabel.text = format( "WBPP steps:" );
 
   this.infoBox = new TextBox( this );
   this.infoBox.useRichText = true;
@@ -590,7 +590,7 @@ function ProcessLogDialog( processLogger )
   this.adjustToContents();
   this.setMinSize();
 
-  this.windowTitle = "Process log";
+  this.windowTitle = "Smart Report";
 }
 
 ProcessLogDialog.prototype = new Dialog;
