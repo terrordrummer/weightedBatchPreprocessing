@@ -1882,7 +1882,7 @@ StackEngine.prototype.doLight = function()
           this.processLogger.addWarning( "All cosmetic corrected light frame files have been removed or cannot be accessed." );
           return;
         }
-        this.processLogger.addSucccess( "Cosmetic Correction OK" );
+        this.processLogger.addSuccess( "Cosmetic Correction OK" );
 
         console.noteln( "<end><cbr><br>",
           "************************************************************" );
