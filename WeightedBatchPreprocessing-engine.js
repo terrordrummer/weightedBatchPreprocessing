@@ -275,7 +275,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   {
     var a = [];
     if ( !this.filter.isEmpty() )
-      a.push( "filter = \"" + this.filter + "\"" );
+      a.push( "filter = " + this.filter );
     else
       a.push( "filter = NoFilter" );
     a.push( "binning = " + this.binning.toString() );
@@ -741,10 +741,9 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
     filter = undefined;
   var forcedFilter = filter != undefined && filter != "?"; // ### see Add Custom Frames dialog
 
-
   var forcedBinning = binning != undefined && binning > 0;
   if ( !forcedBinning )
-    binning = 1;
+    binning = 0;
 
   var forcedExposureTime = imageType == ImageType.BIAS || exposureTime != undefined && exposureTime > 0;
   if ( !forcedExposureTime || imageType == ImageType.BIAS )
@@ -801,7 +800,6 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
         break;
     }
 
-
     if ( !forcedExposureTime )
       if ( exposureTime <= 0 )
         if ( typeof( info[ 0 ].exposure ) == "number" && info[ 0 ].exposure > 0 )
@@ -818,7 +816,7 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
     return false;
   }
 
-  if ( !forcedBinning && binning == 1 )
+  if ( !forcedBinning && binning == 0 )
     binning = File.getBinningFromPath( filePath );
   if ( !forcedFilter && filter == undefined )
     filter = File.getFilterFromPath( filePath );
@@ -836,7 +834,6 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
       break;
     default:
       throw new Error( "StackEngine.addFile(): Internal error: Invalid image type: " + StackEngine.imageTypeToString( imageType ) );
-      break;
   }
 
   var item = new FileItem( filePath, imageType, filter ? filter : "NoFilter", binning, exposureTime, isCFA );
@@ -927,13 +924,14 @@ StackEngine.prototype.reconstructGroups = function()
   let masterFlags = [];
   for ( let i = 0; i < this.useAsMaster.length; ++i )
   {
-    masterFlags[ i ] = this.useAsMaster[ i ];
+    masterFlags.push( this.useAsMaster[ i ] );
     this.useAsMaster[ i ] = false;
   }
 
   // flatten existing file containers, clean groups and readd all
   var fileItems = [];
 
+  // flatten files
   for ( var i = 0; i < this.frameGroups.length; ++i )
     for ( var j = 0; j < this.frameGroups[ i ].fileItems.length; ++j )
       fileItems.push(
@@ -945,15 +943,16 @@ StackEngine.prototype.reconstructGroups = function()
         exposureTime: this.frameGroups[ i ].fileItems[ j ].exposureTime
       } );
 
+  // remove all groups
   let types = [ ImageType.UNKNOWN, ImageType.BIAS, ImageType.DARK, ImageType.FLAT, ImageType.LIGHT ];
   for ( var i = 0; i < types.length; ++i )
     this.deleteFrameSet( types[ i ] );
 
+  // re-add files one by one
   for ( var i = 0; i < fileItems.length; ++i )
-    for ( var j = 0; j < fileItems.length; ++j )
-      this.addFile( fileItems[ i ].filePath, fileItems[ i ].imageType, fileItems[ i ].filter, fileItems[ i ].binning, fileItems[ i ].exposureTime );
+    this.addFile( fileItems[ i ].filePath, fileItems[ i ].imageType, fileItems[ i ].filter, fileItems[ i ].binning, fileItems[ i ].exposureTime );
 
-  // sort by BINNING, FILTER and EXPOSURE
+  // sort groups by BINNING, FILTER and EXPOSURE
   this.frameGroups.sort( ( a, b ) =>
   {
     if ( a.binning != b.binning ) return a.binning > b.binning;
@@ -961,11 +960,11 @@ StackEngine.prototype.reconstructGroups = function()
     return a.exposureTime < b.exposureTime;
   } );
 
+  // re enable master file flags
   for ( let i = 0; i < masterFlags.length; ++i )
-  {
     this.useAsMaster[ i ] = masterFlags[ i ];
-    this.updateMasterFrames( i );
-  }
+  for ( let i = 0; i < this.frameGroups.length; ++i )
+    this.frameGroups[ i ].masterFrame = this.useAsMaster[ this.frameGroups[ i ].imageType ];
 }
 
 StackEngine.prototype.inputHints = function()
@@ -1924,10 +1923,7 @@ StackEngine.prototype.doLight = function()
             {
               debayerImages.push( filePath );
               if ( File.extractName( filePath ) == File.extractName( actualReferenceImage ) + "_d" )
-              {
-                console.noteln( 'New reference image path: ', filePath );
                 actualReferenceImage = filePath;
-              }
             }
           else
           {
@@ -2291,29 +2287,25 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
 
   var postfix = ""
 
-  if ( !frameGroup.filter.isEmpty() )
-  {
-    // Make sure the filter postfix includes only valid file name characters.
-    postfix += "-FILTER_" + frameGroup.filter.cleanFilterName();
-    keywords.push( new FITSKeyword( "FILTER", frameGroup.filter, "Filter used when taking image" ) );
-  }
-
-  postfix += format( "-BINNING_%d", frameGroup.binning );
-
   keywords.push( new FITSKeyword( "XBINNING", format( "%d", frameGroup.binning ), "Binning factor, horizontal axis" ) );
   keywords.push( new FITSKeyword( "YBINNING", format( "%d", frameGroup.binning ), "Binning factor, vertical axis" ) );
+  postfix += format( "_BINNING-%d", frameGroup.binning );
+
+  // Make sure the filter postfix includes only valid file name characters.
+  keywords.push( new FITSKeyword( "FILTER", frameGroup.filter, "Filter used when taking image" ) );
+  postfix += "_FILTER-" + frameGroup.filter.cleanFilterName();
 
   if ( frameGroup.exposureTime > 0 )
   {
-    postfix += format( "-EXPTIME_%g", frameGroup.exposureTime );
     keywords.push( new FITSKeyword( "EXPTIME", format( "%.2f", frameGroup.exposureTime ), "Exposure time in seconds" ) );
+    postfix += format( "_%gs", frameGroup.exposureTime );
   }
 
   var window = ImageWindow.windowById( II.integrationImageId );
   window.keywords = keywords.concat( window.keywords );
 
   var filePath = File.existingDirectory( this.outputDirectory + "/master" );
-  filePath += '/' + StackEngine.imageTypeToString( imageType ) + postfix + ".xisf";
+  filePath += '/master' + capitalize( StackEngine.imageTypeToString( imageType ) ) + postfix + ".xisf";
 
   console.noteln( "<end><cbr><br>* Writing master " + StackEngine.imageTypeToString( imageType ) + " frame:" );
   console.noteln( "<raw>" + filePath + "</raw>" );
@@ -2674,15 +2666,13 @@ StackEngine.prototype.purgeRemovedElements = function()
 StackEngine.prototype.framesGroupsToStringData = function()
 {
   // save files structure
-  return JSON.stringify( this.frameGroups );
+  return JSON.stringify( this.frameGroups, null, 2 );
 }
 
 StackEngine.prototype.framesGroupsFromStringData = function( data )
 {
-  let groupsData = JSON.parse( data );
-  for ( var i = 0; i < groupsData.length; ++i )
-    for ( var j = 0; j < groupsData[ i ].fileItems.length; ++j )
-      this.addFile( groupsData[ i ].fileItems[ j ].filePath, groupsData[ i ].imageType );
+  this.frameGroups = JSON.parse( data );
+  this.reconstructGroups();
 }
 
 StackEngine.prototype.loadSettings = function()
@@ -3176,11 +3166,8 @@ StackEngine.prototype.importParameters = function()
     this.calibrateOnly = Parameters.getBoolean( "calibrateOnly" );
 
   if ( Parameters.has( "groupLightsOfDifferentExposure" ) )
-  {
-    console.writeln( 'groupLightsOfDifferentExposure found' );
     this.groupLightsOfDifferentExposure = Parameters.getBoolean( "groupLightsOfDifferentExposure" );
-    console.writeln( 'groupLightsOfDifferentExposure loaded: ', this.groupLightsOfDifferentExposure );
-  }
+
 
   if ( Parameters.has( "generateDrizzleData" ) )
     this.generateDrizzleData = Parameters.getBoolean( "generateDrizzleData" );

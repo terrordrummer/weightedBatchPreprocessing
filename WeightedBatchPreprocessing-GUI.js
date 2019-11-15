@@ -1702,6 +1702,7 @@ function FileControl( parent, imageType )
         }
       }
     engine.purgeRemovedElements();
+    engine.reconstructGroups();
     this.dialog.refreshTreeBoxes();
   };
 
@@ -1830,6 +1831,7 @@ function FileControl( parent, imageType )
       this.darkExposureToleranceSpinBox.onValueUpdated = function( value )
       {
         engine.darkExposureTolerance = value;
+        engine.reconstructGroups();
         parent.dialog.refreshTreeBoxes();
       };
 
@@ -1906,6 +1908,7 @@ function FileControl( parent, imageType )
       this.groupLightsWithDifferentExposureCheckBox.onCheck = function( checked )
       {
         engine.groupLightsOfDifferentExposure = checked;
+        engine.reconstructGroups();
         parent.dialog.refreshTreeBoxes();
       };
 
@@ -2338,6 +2341,7 @@ function StackDialog()
       for ( var i = 0; i < ofd.fileNames.length; ++i )
         if ( engine.addFile( ofd.fileNames[ i ] ) )
           ++n;
+      engine.reconstructGroups();
       this.dialog.refreshTreeBoxes();
 
       if ( n < ofd.fileNames.length )
@@ -2366,6 +2370,7 @@ function StackDialog()
       for ( var i = 0; i < ofd.fileNames.length; ++i )
         if ( engine.addBiasFrame( ofd.fileNames[ i ] ) )
           ++n;
+      engine.reconstructGroups();
       this.dialog.refreshTreeBoxes();
       this.dialog.tabBox.currentPageIndex = ImageType.BIAS;
 
@@ -2395,6 +2400,7 @@ function StackDialog()
       for ( var i = 0; i < ofd.fileNames.length; ++i )
         if ( engine.addDarkFrame( ofd.fileNames[ i ] ) )
           ++n;
+      engine.reconstructGroups();
       this.dialog.refreshTreeBoxes();
       this.dialog.tabBox.currentPageIndex = ImageType.DARK;
 
@@ -2424,6 +2430,7 @@ function StackDialog()
       for ( var i = 0; i < ofd.fileNames.length; ++i )
         if ( engine.addFlatFrame( ofd.fileNames[ i ] ) )
           ++n;
+      engine.reconstructGroups();
       this.dialog.refreshTreeBoxes();
       this.dialog.tabBox.currentPageIndex = ImageType.FLAT;
 
@@ -2453,6 +2460,7 @@ function StackDialog()
       for ( var i = 0; i < ofd.fileNames.length; ++i )
         if ( engine.addLightFrame( ofd.fileNames[ i ] ) )
           ++n;
+      engine.reconstructGroups();
       this.dialog.refreshTreeBoxes();
       this.dialog.tabBox.currentPageIndex = ImageType.LIGHT;
 
@@ -2478,6 +2486,7 @@ function StackDialog()
       for ( var i = 0; i < d.files.length; ++i )
         if ( engine.addFile( d.files[ i ], d.imageType, d.filter, d.binning, d.exposureTime ) )
           ++n;
+      engine.reconstructGroups();
       this.dialog.refreshTreeBoxes();
       this.dialog.tabBox.currentPageIndex = d.imageType;
 
@@ -2895,7 +2904,6 @@ StackDialog.prototype.updateControls = function()
 
 StackDialog.prototype.refreshTreeBoxes = function()
 {
-  engine.reconstructGroups();
 
   for ( var j = 0; j < this.tabBox.numberOfPages; ++j )
     this.tabBox.pageControlByIndex( j ).treeBox.clear();
@@ -2990,6 +2998,7 @@ StackDialog.prototype.refreshTreeBoxes = function()
 
     for ( var j = 0; j < frameGroup.fileItems.length; ++j )
     {
+
       var fileItem = frameGroup.fileItems[ j ];
 
       var node = new TreeBoxNode( rootNode );
@@ -3003,7 +3012,7 @@ StackDialog.prototype.refreshTreeBoxes = function()
       node.setToolTip( 0, toolTip );
 
       var icon = "";
-      if ( j == 0 && frameGroup.masterFrame )
+      if ( j === 0 && frameGroup.masterFrame )
       {
         icon = ":/bullets/bullet-star-blue.png";
         var f = node.font( 0 );
