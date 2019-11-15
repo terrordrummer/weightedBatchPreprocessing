@@ -435,7 +435,7 @@ StackEngine.imageTypeFromKeyword = function( value )
 
 StackEngine.imageTypeToString = function( imageType )
 {
-  return [ "bias", "dark", "flat", "light" ][ imageType ];
+  return [ "Bias", "Dark", "Flat", "Light" ][ imageType ];
 };
 
 StackEngine.imageTypeToFrameKeywordValue = function( imageType )
@@ -2293,19 +2293,18 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
 
   // Make sure the filter postfix includes only valid file name characters.
   keywords.push( new FITSKeyword( "FILTER", frameGroup.filter, "Filter used when taking image" ) );
-  postfix += "_FILTER-" + frameGroup.filter.cleanFilterName();
+  if ( imageType !== ImageType.BIAS && imageType !== ImageType.DARK )
+    postfix += "_FILTER-" + frameGroup.filter.cleanFilterName();
 
-  if ( frameGroup.exposureTime > 0 )
-  {
-    keywords.push( new FITSKeyword( "EXPTIME", format( "%.2f", frameGroup.exposureTime ), "Exposure time in seconds" ) );
+  keywords.push( new FITSKeyword( "EXPTIME", format( "%.2f", frameGroup.exposureTime ), "Exposure time in seconds" ) );
+  if ( imageType !== ImageType.BIAS && imageType !== ImageType.FLAT )
     postfix += format( "_%gs", frameGroup.exposureTime );
-  }
 
   var window = ImageWindow.windowById( II.integrationImageId );
   window.keywords = keywords.concat( window.keywords );
 
   var filePath = File.existingDirectory( this.outputDirectory + "/master" );
-  filePath += '/master' + String.capitalize( StackEngine.imageTypeToString( imageType ) ) + postfix + ".xisf";
+  filePath += '/master' + StackEngine.imageTypeToString( imageType ) + postfix + ".xisf";
 
   console.noteln( "<end><cbr><br>* Writing master " + StackEngine.imageTypeToString( imageType ) + " frame:" );
   console.noteln( "<raw>" + filePath + "</raw>" );

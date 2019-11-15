@@ -124,17 +124,6 @@ if ( !Array.prototype.enableTargetFrames )
 // ----------------------------------------------------------------------------
 
 /*
- * Returns a capitalized string with capital first letter.
- *
- */
-if ( !String.prototype.capitalize )
-  String.prototype.capitalize = ( s ) =>
-  {
-    if ( typeof s !== 'string' ) return ''
-    return s.charAt( 0 ).toUpperCase() + s.slice( 1 )
-  }
-
-/*
  * Returns a clean filter name.
  *
  */
