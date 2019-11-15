@@ -127,11 +127,12 @@ if ( !Array.prototype.enableTargetFrames )
  * Returns a capitalized string with capital first letter.
  *
  */
-const capitalize = ( s ) =>
-{
-  if ( typeof s !== 'string' ) return ''
-  return s.charAt( 0 ).toUpperCase() + s.slice( 1 )
-}
+if ( !String.prototype.capitalize )
+  String.prototype.capitalize = ( s ) =>
+  {
+    if ( typeof s !== 'string' ) return ''
+    return s.charAt( 0 ).toUpperCase() + s.slice( 1 )
+  }
 
 /*
  * Returns a clean filter name.
@@ -376,7 +377,7 @@ File.geImageTypeFromPath = function( filePath )
 
 /*
  * Extract the exposure time from the last matching pattern occurrence in its filePath.
- * Exposure can be specified by means of he 
+ * Exposure can be specified by means of he
  */
 File.getExposureTimeFromPath = function( filePath )
 {

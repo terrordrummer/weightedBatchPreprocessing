@@ -2305,7 +2305,7 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   window.keywords = keywords.concat( window.keywords );
 
   var filePath = File.existingDirectory( this.outputDirectory + "/master" );
-  filePath += '/master' + capitalize( StackEngine.imageTypeToString( imageType ) ) + postfix + ".xisf";
+  filePath += '/master' + String.capitalize( StackEngine.imageTypeToString( imageType ) ) + postfix + ".xisf";
 
   console.noteln( "<end><cbr><br>* Writing master " + StackEngine.imageTypeToString( imageType ) + " frame:" );
   console.noteln( "<raw>" + filePath + "</raw>" );
