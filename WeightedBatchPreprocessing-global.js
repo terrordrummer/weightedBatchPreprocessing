@@ -63,7 +63,7 @@
 
 #define SETTINGS_KEY_BASE "WeightedBatchPreprocessing/"
 
-#define WEIGHT_KEYWORD "WBPPWGTH"
+#define WEIGHT_KEYWORD "WBPPWGHT"
 
 var ImageType = {
   UNKNOWN: -1,
