@@ -2289,22 +2289,22 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
 
   keywords.push( new FITSKeyword( "XBINNING", format( "%d", frameGroup.binning ), "Binning factor, horizontal axis" ) );
   keywords.push( new FITSKeyword( "YBINNING", format( "%d", frameGroup.binning ), "Binning factor, vertical axis" ) );
-  postfix += format( "_BINNING-%d", frameGroup.binning );
+  postfix += format( "-BINNING_%d", frameGroup.binning );
 
   // Make sure the filter postfix includes only valid file name characters.
   keywords.push( new FITSKeyword( "FILTER", frameGroup.filter, "Filter used when taking image" ) );
   if ( imageType !== ImageType.BIAS && imageType !== ImageType.DARK )
-    postfix += "_FILTER-" + frameGroup.filter.cleanFilterName();
+    postfix += "-FILTER_" + frameGroup.filter.cleanFilterName();
 
   keywords.push( new FITSKeyword( "EXPTIME", format( "%.2f", frameGroup.exposureTime ), "Exposure time in seconds" ) );
   if ( imageType !== ImageType.BIAS && imageType !== ImageType.FLAT )
-    postfix += format( "_%gs", frameGroup.exposureTime );
+    postfix += format( "-EXPTIME_%g", frameGroup.exposureTime );
 
   var window = ImageWindow.windowById( II.integrationImageId );
   window.keywords = keywords.concat( window.keywords );
 
   var filePath = File.existingDirectory( this.outputDirectory + "/master" );
-  filePath += '/master' + StackEngine.imageTypeToString( imageType ) + postfix + ".xisf";
+  filePath += "/master" + StackEngine.imageTypeToString( imageType ) + postfix + ".xisf";
 
   console.noteln( "<end><cbr><br>* Writing master " + StackEngine.imageTypeToString( imageType ) + " frame:" );
   console.noteln( "<raw>" + filePath + "</raw>" );
