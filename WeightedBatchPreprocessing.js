@@ -51,7 +51,7 @@
 
 /* beautify ignore:start */
 
-#feature-id    Weighted Batch Processing > WeightedBatchPreprocessing
+#feature-id    Batch Processing > WeightedBatchPreprocessing
 
 #feature-info  An extension of BatchPreprocessing script including an intermediate step to compute light frames weighs.<br/>\
                Original script written by Kai Wiechen, extension by Roberto Sartori and Tommaso Rubechi (c) 2019
