@@ -99,7 +99,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
   if ( firstItem ) // we pass null from importParameters()
     this.fileItems.push( firstItem );
 
-  this.sameParameters = function( imageType, filter, binning, exposureTime, exposureTolerance, groupLightsOfDifferentExposure )
+  this.sameParameters = function( imageType, filter, binning, exposureTime, exposureTolerance, lightExposureTolerance )
   {
     if ( this.imageType != imageType )
       return false;
@@ -114,7 +114,7 @@ function FrameGroup( imageType, filter, binning, exposureTime, firstItem, master
       case ImageType.UNKNOWN:
         return this.binning == binning && this.filter == filter;
       case ImageType.LIGHT:
-        return this.binning == binning && this.filter == filter && ( groupLightsOfDifferentExposure || ( !groupLightsOfDifferentExposure && Math.abs( this.exposureTime - exposureTime ) <= CONST_MIN_EXPOSURE_TOLERANCE ) );
+        return this.binning == binning && this.filter == filter && Math.abs( this.exposureTime - exposureTime ) <= lightExposureTolerance;
     }
     return false;
   }
@@ -689,10 +689,10 @@ StackEngine.prototype.showIntegrationWarning = function()
   return true;
 };
 
-StackEngine.prototype.findGroup = function( imageType, filter, binning, exposureTime, darkExposureTolerance, groupLightsOfDifferentExposure )
+StackEngine.prototype.findGroup = function( imageType, filter, binning, exposureTime, darkExposureTolerance, lightExposureTolerance )
 {
   for ( var i = 0; i < this.frameGroups.length; ++i )
-    if ( this.frameGroups[ i ].sameParameters( imageType, filter, binning, exposureTime, darkExposureTolerance, groupLightsOfDifferentExposure ) )
+    if ( this.frameGroups[ i ].sameParameters( imageType, filter, binning, exposureTime, darkExposureTolerance, lightExposureTolerance ) )
       return i;
   return -1;
 };
@@ -840,7 +840,7 @@ StackEngine.prototype.addFile = function( filePath, imageType, filter, binning, 
 
   if ( this.frameGroups.length > 0 )
   {
-    var i = this.findGroup( imageType, filter, binning, exposureTime, this.darkExposureTolerance, this.groupLightsOfDifferentExposure );
+    var i = this.findGroup( imageType, filter, binning, exposureTime, this.darkExposureTolerance, this.lightExposureTolerance );
     if ( i >= 0 )
     {
       if ( isMaster )
@@ -2709,6 +2709,8 @@ StackEngine.prototype.loadSettings = function()
     this.darkOptimizationWindow = o;
   if ( ( o = load( "darkExposureTolerance", DataType_Float ) ) != null )
     this.darkExposureTolerance = o;
+  if ( ( o = load( "lightExposureTolerance", DataType_Float ) ) != null )
+    this.lightExposureTolerance = o;
   if ( ( o = load( "evaluateNoise", DataType_Boolean ) ) != null )
     this.evaluateNoise = o;
 
@@ -2786,8 +2788,6 @@ StackEngine.prototype.loadSettings = function()
     this.flatDarksOnly = o;
   if ( ( o = load( "calibrateOnly", DataType_Boolean ) ) != null )
     this.calibrateOnly = o;
-  if ( ( o = load( "groupLightsOfDifferentExposure", DataType_Boolean ) ) != null )
-    this.groupLightsOfDifferentExposure = o;
   if ( ( o = load( "generateDrizzleData", DataType_Boolean ) ) != null )
     this.generateDrizzleData = o;
   if ( ( o = load( "bayerPattern", DataType_Int32 ) ) != null )
@@ -2853,6 +2853,7 @@ StackEngine.prototype.saveSettings = function()
   save( "darkOptimizationLow", DataType_Float, this.darkOptimizationLow );
   save( "darkOptimizationWindow", DataType_Int32, this.darkOptimizationWindow );
   save( "darkExposureTolerance", DataType_Float, this.darkExposureTolerance );
+  save( "lightExposureTolerance", DataType_Float, this.lightExposureTolerance );
   save( "evaluateNoise", DataType_Boolean, this.evaluateNoise );
 
   save( "overscanEnabled", DataType_Boolean, this.overscan.enabled );
@@ -2896,7 +2897,6 @@ StackEngine.prototype.saveSettings = function()
   save( "flatsLargeScaleRejectionGrowth", DataType_Int32, this.flatsLargeScaleRejectionGrowth );
   save( "flatDarksOnly", DataType_Boolean, this.flatDarksOnly );
   save( "calibrateOnly", DataType_Boolean, this.calibrateOnly );
-  save( "groupLightsOfDifferentExposure", DataType_Boolean, this.groupLightsOfDifferentExposure );
   save( "generateDrizzleData", DataType_Boolean, this.generateDrizzleData );
   save( "bayerPattern", DataType_Int32, this.bayerPattern );
   save( "debayerMethod", DataType_Int32, this.debayerMethod );
@@ -2983,7 +2983,7 @@ function setDefaultParameters()
 
   // Light
   this.calibrateOnly = DEFAULT_CALIBRATE_ONLY;
-  this.groupLightsOfDifferentExposure = DEFAULT_GROUP_LIGHTS_WITH_DIFFERENT_EXPOSURE;
+  this.lightExposureTolerance = DEFAULT_LIGHT_EXPOSURE_TOLERANCE; // in seconds
   this.generateDrizzleData = DEFAULT_GENERATE_DRIZZLE_DATA;
 
   // Cosmetic correction
@@ -3056,6 +3056,9 @@ StackEngine.prototype.importParameters = function()
 
   if ( Parameters.has( "darkExposureTolerance" ) )
     this.darkExposureTolerance = Parameters.getReal( "darkExposureTolerance" );
+
+  if ( Parameters.has( "lightExposureTolerance" ) )
+    this.lightExposureTolerance = Parameters.getReal( "lightExposureTolerance" );
 
   if ( Parameters.has( "evaluateNoise" ) )
     this.evaluateNoise = Parameters.getBoolean( "evaluateNoise" );
@@ -3163,10 +3166,6 @@ StackEngine.prototype.importParameters = function()
 
   if ( Parameters.has( "calibrateOnly" ) )
     this.calibrateOnly = Parameters.getBoolean( "calibrateOnly" );
-
-  if ( Parameters.has( "groupLightsOfDifferentExposure" ) )
-    this.groupLightsOfDifferentExposure = Parameters.getBoolean( "groupLightsOfDifferentExposure" );
-
 
   if ( Parameters.has( "generateDrizzleData" ) )
     this.generateDrizzleData = Parameters.getBoolean( "generateDrizzleData" );
@@ -3302,7 +3301,7 @@ StackEngine.prototype.exportParameters = function()
   Parameters.set( "flatDarksOnly", this.flatDarksOnly );
 
   Parameters.set( "calibrateOnly", this.calibrateOnly );
-  Parameters.set( "groupLightsOfDifferentExposure", this.groupLightsOfDifferentExposure );
+  Parameters.set( "lightExposureTolerance", this.lightExposureTolerance );
   Parameters.set( "generateDrizzleData", this.generateDrizzleData );
 
   Parameters.set( "cosmeticCorrection", this.cosmeticCorrection );

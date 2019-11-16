@@ -99,6 +99,7 @@ ImageIntegration.prototype.auto = 999;
 #define DEFAULT_FLATS_LARGE_SCALE_GROWTH              2
 
 #define DEFAULT_CALIBRATE_ONLY                        false
+#define DEFAULT_LIGHT_EXPOSURE_TOLERANCE              2
 #define DEFAULT_GROUP_LIGHTS_WITH_DIFFERENT_EXPOSURE  false
 #define DEFAULT_GENERATE_DRIZZLE_DATA                 true
 

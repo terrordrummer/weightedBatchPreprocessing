@@ -1820,6 +1820,7 @@ function FileControl( parent, imageType )
       this.darkExposureToleranceLabel.text = "Exposure tolerance:";
       this.darkExposureToleranceLabel.minWidth = this.dialog.labelWidth1 +
         this.dialog.logicalPixelsToPhysical( 6 ); // + integration control margin
+      this.dialog.logicalPixelsToPhysical( 6 ); // + integration control margin
       this.darkExposureToleranceLabel.textAlignment = TextAlign_Right | TextAlign_VertCenter;
 
       this.darkExposureToleranceSpinBox = new SpinBox( this );
@@ -1902,19 +1903,28 @@ function FileControl( parent, imageType )
       this.calibrateOnlySizer.add( this.calibrateOnlyCheckBox );
       this.calibrateOnlySizer.addStretch();
 
-      this.groupLightsWithDifferentExposureCheckBox = new CheckBox( this );
-      this.groupLightsWithDifferentExposureCheckBox.text = "Group lights with different exposure";
-      this.groupLightsWithDifferentExposureCheckBox.toolTip = "<p>When this option is active light frames with same binning and filter will be grouped and integrated together even if they have different exposures.</p>";
-      this.groupLightsWithDifferentExposureCheckBox.onCheck = function( checked )
+      this.lightExposureToleranceLabel = new Label( this );
+      this.lightExposureToleranceLabel.text = "Exposure tolerance:";
+      this.lightExposureToleranceLabel.minWidth = this.dialog.labelWidth1 + this.logicalPixelsToPhysical( 4 + 2 );
+      this.lightExposureToleranceLabel.textAlignment = TextAlign_Right | TextAlign_VertCenter;
+
+      this.lightExposureToleranceSpinBox = new SpinBox( this );
+      this.lightExposureToleranceSpinBox.minValue = 0;
+      this.lightExposureToleranceSpinBox.maxValue = 3600;
+      this.lightExposureToleranceSpinBox.setFixedWidth( this.dialog.numericEditWidth + this.logicalPixelsToPhysical( 16 ) );
+      this.lightExposureToleranceSpinBox.toolTip = "<p>Light frames with exposure times differing less than this value " +
+        "(in seconds) will be grouped together.</p>";
+      this.lightExposureToleranceSpinBox.onValueUpdated = function( value )
       {
-        engine.groupLightsOfDifferentExposure = checked;
+        engine.lightExposureTolerance = value;
         engine.reconstructGroups();
         parent.dialog.refreshTreeBoxes();
       };
 
       this.groupLightsWithDifferentExposureSizer = new HorizontalSizer;
-      this.groupLightsWithDifferentExposureSizer.addUnscaledSpacing( this.dialog.labelWidth1 + this.logicalPixelsToPhysical( 4 + 6 ) ); // + spacing + integration control margin
-      this.groupLightsWithDifferentExposureSizer.add( this.groupLightsWithDifferentExposureCheckBox );
+      this.groupLightsWithDifferentExposureSizer.spacing = 4;
+      this.groupLightsWithDifferentExposureSizer.add( this.lightExposureToleranceLabel );
+      this.groupLightsWithDifferentExposureSizer.add( this.lightExposureToleranceSpinBox );
       this.groupLightsWithDifferentExposureSizer.addStretch();
 
       this.cosmeticCorrectionControl = new CosmeticCorrectionControl( this );
@@ -2872,7 +2882,7 @@ StackDialog.prototype.updateControls = function()
         break;
       case ImageType.LIGHT:
         page.calibrateOnlyCheckBox.checked = engine.calibrateOnly;
-        page.groupLightsWithDifferentExposureCheckBox.checked = engine.groupLightsOfDifferentExposure;
+        page.lightExposureToleranceSpinBox.value = engine.lightExposureTolerance;
         page.cosmeticCorrectionControl.updateControls();
         page.deBayeringControl.updateControls();
         page.lightsRegistrationControl.updateControls();
