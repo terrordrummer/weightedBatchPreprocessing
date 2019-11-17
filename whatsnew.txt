@@ -1,3 +1,9 @@
+v1.3.6
+- light exposure tolerance flag replaces the "Group lights with different exposure"
+- reference frame selected amog the files with the lowest binning
+- bugfix: drizzle files not update by Image Integration process
+
+v1.3.5
 - Automatic light frame weights computation
 - Automatic selection of the best reference frame for registration
 - Multiple duration/filter/binning light frame groups processed

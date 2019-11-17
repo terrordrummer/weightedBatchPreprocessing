@@ -104,7 +104,7 @@ if ( !Array.prototype.has )
 if ( !Array.prototype.enableTargetFrames )
   Object.defineProperty( Array.prototype, "enableTargetFrames",
   {
-    value: function( ncolumns )
+    value: function( ncolumns, enableDrizzle )
     {
       var target = new Array;
       for ( var i = 0; i < this.length; ++i )
@@ -113,11 +113,14 @@ if ( !Array.prototype.enableTargetFrames )
         for ( var j = 0; j < ncolumns - 1; ++j )
           target[ i ][ j ] = true;
         target[ i ][ ncolumns - 1 ] = this[ i ];
+        if ( enableDrizzle )
+          target[ i ][ ncolumns ] = File.changeExtension( this[ i ], '.xdrz' );
       }
       return target;
     },
     enumerable: false
   } );
+
 
 // ----------------------------------------------------------------------------
 // Extensions to the String object

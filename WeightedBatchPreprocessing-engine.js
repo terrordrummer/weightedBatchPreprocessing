@@ -1764,9 +1764,17 @@ StackEngine.prototype.doLight = function()
    *          3. registration/integration will continue for all groups
    */
 
+  // determine the lowest binning available
+  // the reference frame is selected among the frames with that binning
+  var binningForReferenceFrame = 99;
+  for ( var i = 0; i < this.frameGroups.length; ++i )
+    if ( this.frameGroups[ i ].imageType == ImageType.LIGHT && binningForReferenceFrame > this.frameGroups[ i ].binning )
+      binningForReferenceFrame = this.frameGroups[ i ].binning;
+
   var processedImageGroups = new Array;
   var imagesDescriptors = new Array;
   var imagesDescriptorsMinMax = new Array;
+  var imagesDescriptorsForReferenceFrame = new Array;
   var actualReferenceImage = this.referenceImage;
   for ( var i = 0; i < this.frameGroups.length; ++i )
   {
@@ -1959,11 +1967,18 @@ StackEngine.prototype.doLight = function()
         processedImageGroup.images.push( images[ ii ] );
       processedImageGroups.push( processedImageGroup );
 
-      if ( this.useBestLightAsReference || ( this.generateSubframesWeights && !this.generateSubframesWeightsAfterRegistration ) )
+      if ( ( this.useBestLightAsReference && binningForReferenceFrame === processedImageGroup.binning ) || ( this.generateSubframesWeights && !this.generateSubframesWeightsAfterRegistration ) )
       {
         let desc = this.computeDescriptors( images );
-        imagesDescriptors[ i ] = desc.imagesDescriptors;
-        imagesDescriptorsMinMax[ i ] = desc.imagesDescriptorsMinMax;
+        if ( this.useBestLightAsReference && binningForReferenceFrame === processedImageGroup.binning )
+        {
+          imagesDescriptorsForReferenceFrame.push( desc.imagesDescriptors );
+        }
+        if ( this.generateSubframesWeights && !this.generateSubframesWeightsAfterRegistration )
+        {
+          imagesDescriptors[ i ] = desc.imagesDescriptors;
+          imagesDescriptorsMinMax[ i ] = desc.imagesDescriptorsMinMax;
+        }
         this.processLogger.addSuccess( "Frames analysis completed" );
       }
       this.processLogger.addMessage( this.frameGroups[ i ].logStringFooter() );
@@ -1980,7 +1995,7 @@ StackEngine.prototype.doLight = function()
       console.noteln( "************************************************************" );
       console.flush();
 
-      actualReferenceImage = this.findRegistrationReferenceImage( imagesDescriptors );
+      actualReferenceImage = this.findRegistrationReferenceImage( imagesDescriptorsForReferenceFrame );
 
       console.noteln( "<end><cbr><br>" );
       console.noteln( "Best reference frame for registration: " + actualReferenceImage );
@@ -2199,10 +2214,11 @@ StackEngine.prototype.doIntegrate = function( frameGroup )
   II.inputHints = this.inputHints();
   II.bufferSizeMB = 16;
   II.stackSizeMB = 1024;
-  II.images = frameSet.enableTargetFrames( 2 );
+  II.images = frameSet.enableTargetFrames( 2, this.generateDrizzleData );
   II.combination = this.combination[ imageType ];
   II.rejection = selectedRejection;
   II.generateRejectionMaps = this.generateRejectionMaps;
+  II.generateDrizzleData = this.generateDrizzleData;
   II.minMaxLow = this.minMaxLow[ imageType ];
   II.minMaxHigh = this.minMaxHigh[ imageType ];
   II.pcClipLow = this.percentileLow[ imageType ];
