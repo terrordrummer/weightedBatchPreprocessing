@@ -1,4 +1,4 @@
-v1.3.6
+v1.4.0
 - light exposure tolerance flag replaces the "Group lights with different exposure"
 - reference frame selected amog the files with the lowest binning
 - bugfix: drizzle files not update by Image Integration process
