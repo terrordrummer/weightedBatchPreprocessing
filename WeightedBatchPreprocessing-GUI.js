@@ -1507,7 +1507,7 @@ function SubframesWeightingControl( parent )
   this.subframesWeightCheckBox.checked = engine.generateSubframesWeights;
   this.subframesWeightCheckBox.toolTip = "<p>If this option is checked light frames will be analyzed and weighted " +
     "accordingly to the relative weights assigned to FWHM, eccentricity and SNR. " +
-    "Weights are saved into the image as WBPPWGTH header key which will be used during the ImageIntegration process.</p>";
+    "Weights are saved into the image as WBPPWGHT header key which will be used during the ImageIntegration process.</p>";
   this.subframesWeightCheckBox.onCheck = function( checked )
   {
     engine.generateSubframesWeights = checked;
