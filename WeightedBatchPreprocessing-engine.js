@@ -2771,6 +2771,9 @@ StackEngine.prototype.loadSettings = function()
       this.combination[ i ] = o;
     if ( ( o = loadIndexed( "rejection", i, DataType_Int32 ) ) != null )
       this.rejection[ i ] = o;
+    // compatibility from PI 1.8.7 and above
+    if ( this.rejection[ i ] == ImageIntegration.CCDClip )
+      this.rejection[ i ] = ImageIntegration.auto;
     if ( ( o = loadIndexed( "minMaxLow", i, DataType_Int32 ) ) != null )
       this.minMaxLow[ i ] = o;
     if ( ( o = loadIndexed( "minMaxHigh", i, DataType_Int32 ) ) != null )
